@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from src.features.base import Transformer
+from src.features.transformers.features.motion_features import BallSpeed
 from src.features.transformers.cleaning.column_pruner import ColumnPruner
 from src.features.transformers.cleaning.boolean_encoder import BooleanEncoder
 from src.features.transformers.cleaning.location_splitter import LocationSplitter
@@ -26,6 +27,9 @@ from src.features.transformers.features.full_tier_features import TeamCentroidDi
 from src.features.transformers.features.full_tier_features import OpenAngleGoal
 from src.features.transformers.features.geometry_features import DistToGoal, ShotAngle, InPenaltyBox
 from src.features.transformers.features.trajectory_features import TrajectoryLength, TrajectoryAngle
+from src.features.transformers.features.pressure_features import (
+    DistNearestDefender, DefendersIn3m,
+)
 
 # ---------------------------------------------------------------------
 # safe_extract
@@ -882,3 +886,302 @@ class TestTrajectoryAngle:
         })
         with pytest.raises(KeyError):
             TrajectoryAngle().transform(df)
+# ---------------------------------------------------------------------
+# Pressure features
+# ---------------------------------------------------------------------
+
+
+
+def _pressure_frame(opponents, x=0.0, y=0.0):
+    return pd.DataFrame({
+        'ball_x_start': [x],
+        'ball_y_start': [y],
+        'opponent_locations': [opponents],
+    })
+
+
+class TestPressureFeatures:
+    def test_known_distances_and_inclusive_boundary(self):
+        df = _pressure_frame([(3, 4), (0, 3), (0, 2), (0, 3.000001)])
+        assert DistNearestDefender().transform(df)['dist_nearest_defender'].iloc[0] == 2
+        assert DefendersIn3m().transform(df)['defenders_in_3m'].iloc[0] == 2
+
+    def test_diagonal_boundary_and_custom_radius(self):
+        df = _pressure_frame([(3, 4), (-3, -4), (5.000001, 0)])
+        assert DistNearestDefender().transform(df)['dist_nearest_defender'].iloc[0] == 5
+        assert DefendersIn3m(radius=5).transform(df)['defenders_in_3m'].iloc[0] == 2
+
+    def test_zero_radius_and_colocated_players(self):
+        df = _pressure_frame([(0, 0), (0, 0), (0.000001, 0)])
+        assert DistNearestDefender().transform(df)['dist_nearest_defender'].iloc[0] == 0
+        assert DefendersIn3m(radius=0).transform(df)['defenders_in_3m'].iloc[0] == 2
+
+    @pytest.mark.parametrize('opponents', [
+        [], (), np.empty((0, 2)), None, np.nan, pd.NA, 42, 'missing',
+        np.array(2), [(np.nan, 0), (0, np.inf)],
+    ])
+    def test_no_known_opponents(self, opponents):
+        df = _pressure_frame(opponents)
+        assert pd.isna(DistNearestDefender().transform(df)['dist_nearest_defender'].iloc[0])
+        assert DefendersIn3m().transform(df)['defenders_in_3m'].iloc[0] == 0
+
+    @pytest.mark.parametrize('bad', [None, np.nan, pd.NA, np.inf, -np.inf, 'bad'])
+    @pytest.mark.parametrize('axis', ['ball_x_start', 'ball_y_start'])
+    def test_unknown_ball_position_is_not_zero_pressure(self, bad, axis):
+        df = _pressure_frame([(0, 0)])
+        df[axis] = [bad]
+        assert pd.isna(DistNearestDefender().transform(df)['dist_nearest_defender'].iloc[0])
+        assert pd.isna(DefendersIn3m().transform(df)['defenders_in_3m'].iloc[0])
+
+    @pytest.mark.parametrize('container', [list, tuple, np.array])
+    def test_supported_opponent_containers(self, container):
+        df = _pressure_frame(container([(2, 0), (4, 0)]))
+        assert DistNearestDefender().transform(df)['dist_nearest_defender'].iloc[0] == 2
+        assert DefendersIn3m().transform(df)['defenders_in_3m'].iloc[0] == 1
+
+    def test_bad_entries_do_not_hide_valid_opponents(self):
+        df = _pressure_frame([
+            None, [], [1], [1, 2, 3], {'x': 0}, 'bad', (pd.NA, 0),
+            (np.nan, 0), (np.inf, 0), ('bad', 0), (0, 2), (3, 4),
+        ])
+        assert DistNearestDefender().transform(df)['dist_nearest_defender'].iloc[0] == 2
+        assert DefendersIn3m().transform(df)['defenders_in_3m'].iloc[0] == 1
+
+    @pytest.mark.parametrize('factory,output', [
+        (DistNearestDefender, 'dist_nearest_defender'),
+        (DefendersIn3m, 'defenders_in_3m'),
+    ])
+    def test_custom_columns(self, factory, output):
+        df = pd.DataFrame({'x': [0], 'y': [0], 'opponents': [[(1, 0)]]})
+        result = factory(x_col='x', y_col='y', opponents_col='opponents').transform(df)
+        assert result[output].iloc[0] == 1
+
+    @pytest.mark.parametrize('factory', [DistNearestDefender, DefendersIn3m])
+    @pytest.mark.parametrize('column', ['ball_x_start', 'ball_y_start', 'opponent_locations'])
+    def test_missing_required_column(self, factory, column):
+        df = _pressure_frame([]).drop(columns=column)
+        with pytest.raises(KeyError):
+            factory().transform(df)
+
+    @pytest.mark.parametrize('factory,output', [
+        (DistNearestDefender, 'dist_nearest_defender'),
+        (DefendersIn3m, 'defenders_in_3m'),
+    ])
+    def test_empty_dataframe_preserves_schema_and_index(self, factory, output):
+        df = _pressure_frame([]).iloc[:0]
+        result = factory().transform(df)
+        assert result.empty
+        assert list(result.columns) == list(df.columns) + [output]
+        assert result[output].dtype == np.float64
+        pd.testing.assert_index_equal(result.index, df.index)
+
+    def test_preserves_input_nested_values_and_duplicate_index(self):
+        import copy
+        df = pd.DataFrame({
+            'ball_x_start': [0, 10, 0],
+            'ball_y_start': [0, 0, 0],
+            'opponent_locations': [[(1, 0)], [(14, 0)], []],
+            'unrelated': ['a', 'b', 'c'],
+        }, index=[7, 2, 7])
+        original = copy.deepcopy(df.to_dict('list'))
+        snapshot = df.copy(deep=True)
+        pipeline = Pipeline([DistNearestDefender(), DefendersIn3m()])
+        result = pipeline.transform(df)
+        assert result['dist_nearest_defender'].iloc[:2].tolist() == [1, 4]
+        assert pd.isna(result['dist_nearest_defender'].iloc[2])
+        assert result['defenders_in_3m'].tolist() == [1, 0, 0]
+        pd.testing.assert_frame_equal(result[df.columns], snapshot)
+        pd.testing.assert_frame_equal(df, snapshot)
+        assert df.to_dict('list') == original
+        pd.testing.assert_frame_equal(pipeline.transform(result), result)
+
+    @pytest.mark.parametrize('radius', [
+        -1, np.nan, np.inf, -np.inf, True, np.bool_(False), [], [3], 'bad', pd.NA,
+    ])
+    def test_invalid_radius_rejected(self, radius):
+        with pytest.raises(ValueError, match='radius'):
+            DefendersIn3m(radius=radius)
+
+    def test_full_cleaning_and_existing_features_integration(self):
+        # Raw coordinates: ball -> (52.5, 34), opponent -> (54.25, 34).
+        df = pd.DataFrame({
+            'location': [[60, 40]],
+            'shot_freeze_frame': [[
+                {'teammate': True, 'location': [60, 40]},
+                {'teammate': False, 'location': [62, 40], 'keeper': True},
+                {'teammate': False, 'location': [70, 40]},
+                {'teammate': False},
+            ]],
+        })
+        result = Pipeline([
+            LocationSplitter(columns=[('location', 'ball_x_start', 'ball_y_start')]),
+            CoordinateRescaler(columns=[('ball_x_start', 'x'), ('ball_y_start', 'y')]),
+            FreezeFrameExtractor(), DistToGoal(),
+            DistNearestDefender(), DefendersIn3m(),
+        ]).transform(df)
+        assert result['dist_nearest_defender'].iloc[0] == pytest.approx(1.75)
+        assert result['defenders_in_3m'].iloc[0] == 1
+        assert result['dist_to_goal'].iloc[0] == pytest.approx(52.5)
+        assert 'location' in df.columns
+        assert 'shot_freeze_frame' in df.columns
+
+    def test_randomized_against_independent_scalar_reference(self):
+        import math
+        rng = np.random.default_rng(12345)
+        for _ in range(100):
+            ball = rng.uniform([0, 0], [105, 68])
+            opponents = rng.uniform([0, 0], [105, 68], size=(11, 2))
+            radius = float(rng.uniform(0, 30))
+            distances = [math.dist(ball, point) for point in opponents]
+            df = _pressure_frame(opponents, *ball)
+            nearest = DistNearestDefender().transform(df)['dist_nearest_defender'].iloc[0]
+            count = DefendersIn3m(radius=radius).transform(df)['defenders_in_3m'].iloc[0]
+            assert nearest == pytest.approx(min(distances))
+            assert count == sum(distance <= radius for distance in distances)
+            # Translation and opponent ordering must not change either feature.
+            moved = _pressure_frame(opponents[::-1] + 17, *(ball + 17))
+            assert DistNearestDefender().transform(moved)['dist_nearest_defender'].iloc[0] == pytest.approx(nearest)
+            assert DefendersIn3m(radius=radius).transform(moved)['defenders_in_3m'].iloc[0] == count
+
+# ---------------------------------------------------------------------
+# motion feature
+# ---------------------------------------------------------------------
+
+class TestBallSpeed:
+    @staticmethod
+    def frame():
+        return pd.DataFrame({
+            'match_id': [1, 1, 1], 'period': [1, 1, 1],
+            'event_time_seconds': [0., 2., 4.],
+            'ball_x_start': [0., 3., 3.], 'ball_y_start': [0., 4., 4.],
+        })
+
+    def test_known_speed_and_stationary_ball(self):
+        result = BallSpeed().transform(self.frame())
+        assert pd.isna(result.ball_speed.iloc[0])
+        assert result.ball_speed.iloc[1:].tolist() == [2.5, 0.]
+
+    def test_unsorted_rows_and_duplicate_named_index(self):
+        df = self.frame().iloc[[2, 0, 1]].copy()
+        df.index = pd.Index([7, 2, 7], name='match_id')
+        original = df.copy(deep=True)
+        result = BallSpeed().transform(df)
+        assert result.ball_speed.iloc[0] == 0
+        assert pd.isna(result.ball_speed.iloc[1])
+        assert result.ball_speed.iloc[2] == 2.5
+        pd.testing.assert_frame_equal(result[df.columns], original)
+        pd.testing.assert_frame_equal(df, original)
+        pd.testing.assert_frame_equal(BallSpeed().transform(result), result)
+
+    def test_match_and_period_boundaries(self):
+        df = pd.concat([self.frame()] * 3, ignore_index=True)
+        df['match_id'] = [1] * 6 + [2] * 3
+        df['period'] = [1] * 3 + [2] * 3 + [1] * 3
+        result = BallSpeed().transform(df)
+        assert result.ball_speed.iloc[[0, 3, 6]].isna().all()
+        assert result.ball_speed.iloc[[1, 4, 7]].tolist() == [2.5] * 3
+
+    def test_team_transitions_do_not_create_coordinate_jumps(self):
+        df = self.frame()
+        df['team'] = ['a', 'b', 'b']
+        df['ball_x_start'] = [0., 100., 103.]
+        result = BallSpeed().transform(df)
+        assert result.ball_speed.iloc[:2].isna().all()
+        assert result.ball_speed.iloc[2] == 1.5
+
+    @pytest.mark.parametrize('team', [None, pd.NA, np.nan])
+    def test_unknown_team_not_compared(self, team):
+        df = self.frame()
+        df['team'] = ['a', team, 'a']
+        assert BallSpeed().transform(df).ball_speed.isna().all()
+
+    def test_zero_time_and_event_index_tie_break(self):
+        df = self.frame()
+        df['event_time_seconds'] = [0., 0., 2.]
+        df['ball_x_start'] = [0., 3., 6.]
+        df['ball_y_start'] = [0., 0., 0.]
+        df['index'] = [1, 2, 3]
+        result = BallSpeed().transform(df.iloc[[1, 2, 0]])
+        assert pd.isna(result.ball_speed.iloc[0])
+        assert result.ball_speed.iloc[1] == 1.5
+        assert pd.isna(result.ball_speed.iloc[2])
+
+    @pytest.mark.parametrize('value', [None, pd.NA, np.nan, np.inf, -np.inf, 'bad'])
+    @pytest.mark.parametrize('column', ['ball_x_start', 'ball_y_start'])
+    def test_missing_position_breaks_adjacent_intervals(self, value, column):
+        df = self.frame()
+        df[column] = pd.Series([0, value, 3], dtype=object)
+        assert BallSpeed().transform(df).ball_speed.isna().all()
+
+    @pytest.mark.parametrize('value', [None, pd.NA, np.nan, np.inf, 'bad'])
+    def test_missing_time_is_unknown(self, value):
+        df = self.frame()
+        df['event_time_seconds'] = pd.Series([0, 2, value], dtype=object)
+        result = BallSpeed().transform(df)
+        assert pd.isna(result.ball_speed.iloc[2])
+        assert result.ball_speed.iloc[1] == 2.5
+
+    @pytest.mark.parametrize('column', ['match_id', 'period'])
+    def test_missing_group_values_are_not_combined(self, column):
+        df = self.frame()
+        df[column] = [None, None, None]
+        assert BallSpeed().transform(df).ball_speed.isna().all()
+
+    @pytest.mark.parametrize('column', [
+        'match_id', 'period', 'event_time_seconds', 'ball_x_start', 'ball_y_start',
+    ])
+    def test_missing_required_column(self, column):
+        with pytest.raises(KeyError):
+            BallSpeed().transform(self.frame().drop(columns=column))
+
+    @pytest.mark.parametrize('groups', ['session', ['session'], ('session',)])
+    def test_custom_columns_and_group(self, groups):
+        df = self.frame().rename(columns={
+            'match_id': 'session', 'event_time_seconds': 't',
+            'ball_x_start': 'x', 'ball_y_start': 'y',
+        })
+        result = BallSpeed(time_col='t', x_col='x', y_col='y', group_col=groups).transform(df)
+        assert result.ball_speed.iloc[1] == 2.5
+
+    @pytest.mark.parametrize('groups', [[], (), 42, False])
+    def test_invalid_group_configuration(self, groups):
+        with pytest.raises(ValueError, match='group_col'):
+            BallSpeed(group_col=groups)
+
+    def test_empty_frame(self):
+        df = self.frame().iloc[:0]
+        result = BallSpeed().transform(df)
+        pd.testing.assert_frame_equal(result[df.columns], df)
+        assert result.ball_speed.dtype == np.float64
+
+    def test_helper_names_are_not_overwritten(self):
+        df = self.frame()
+        for col in ['time', 'x', 'y', 'group', 'row_order', 'event_order']:
+            df[col] = 'keep'
+        result = BallSpeed().transform(df)
+        pd.testing.assert_frame_equal(result[df.columns], df)
+
+    def test_randomized_reference_with_shuffled_events(self):
+        import math
+        rng = np.random.default_rng(713)
+        df = pd.DataFrame({
+            'match_id': np.repeat([1, 2], 40),
+            'period': np.tile(np.repeat([1, 2], 20), 2),
+            'event_time_seconds': np.tile(np.arange(20) * 2., 4),
+            'ball_x_start': rng.uniform(0, 105, 80),
+            'ball_y_start': rng.uniform(0, 68, 80),
+        })
+        expected = []
+        for i in range(len(df)):
+            if i % 20 == 0:
+                expected.append(np.nan)
+            else:
+                previous = df.iloc[i - 1]
+                current = df.iloc[i]
+                expected.append(math.dist(
+                    (previous.ball_x_start, previous.ball_y_start),
+                    (current.ball_x_start, current.ball_y_start),
+                ) / 2)
+        shuffled = df.sample(frac=1, random_state=8)
+        result = BallSpeed().transform(shuffled)
+        np.testing.assert_allclose(result.ball_speed, np.asarray(expected)[shuffled.index], equal_nan=True)
