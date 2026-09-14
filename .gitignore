@@ -221,3 +221,6 @@ __marimo__/
 # Project data — fetched via loader.py, not tracked in git
 data/raw/
 data/processed/
+
+
+.vscode/
