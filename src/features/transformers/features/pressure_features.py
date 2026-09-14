@@ -57,6 +57,11 @@ class DistNearestDefender(Transformer):
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         # preserve existing features and raise keyerror for missing inputs.
         transformed_df = df.copy()
+
+        for col in (self.x_col, self.y_col, self.opponents_col):
+            if col not in transformed_df.columns:
+                raise KeyError(f"column '{col}' not found in DataFrame")
+
         rows = transformed_df[[self.x_col, self.y_col, self.opponents_col]]
         values = []
         for x, y, opponents in rows.itertuples(index=False, name=None):
@@ -94,6 +99,11 @@ class DefendersIn3m(Transformer):
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         # preserve existing features and raise keyerror for missing inputs.
         transformed_df = df.copy()
+
+        for col in (self.x_col, self.y_col, self.opponents_col):
+            if col not in transformed_df.columns:
+                raise KeyError(f"column '{col}' not found in DataFrame")
+
         rows = transformed_df[[self.x_col, self.y_col, self.opponents_col]]
         values = []
         for x, y, opponents in rows.itertuples(index=False, name=None):
