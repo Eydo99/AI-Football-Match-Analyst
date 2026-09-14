@@ -3,7 +3,7 @@ from typing_extensions import override
 
 from src.features.base import Transformer
 
-DROP_COLS = [
+DROP_COLS_PRE_FEATURE_ENG = [
         # Event types entirely outside req (Duel, Dribble, Block, Clearance,
         # Ball Recovery, Ball Receipt, Interception, Substitution, Tactics,
         # 50/50, Bad Behaviour, Half Start/End, misc admin)
@@ -67,14 +67,94 @@ DROP_COLS = [
         'goalkeeper_lost_out',
         'goalkeeper_success_out',
         'goalkeeper_saved_to_post',
+        'duration'
     ]
+
+DROP_COLS_POST_FEATURE_ENG = [
+    # Intermediate inputs consumed during feature engineering
+    'opponent_locations',       # consumed by TeamCentroidDistance / OpenAngleGoal
+    'index',                    # consumed by BallSpeed (event ordering / tie-breaking)
+    'period',                   # consumed by BallSpeed (grouping)
+    'event_time_seconds',       # consumed by BallSpeed (elapsed time)
+    'pass_x_end', 'pass_y_end',
+    'shot_x_end', 'shot_y_end',
+    'goalkeeper_x_end', 'goalkeeper_y_end',
+    'carry_x_end', 'carry_y_end',
+    'shot_outcome',              # consumed by GoalOutcomeTransformer
+
+    # Redundant key
+    'team_id',                   # keeping 'team' instead
+
+    # Not used by any model or feature (contextual/attribute columns)
+    'play_pattern',
+    'under_pressure',
+    'position',
+    'player',
+    'player_id',
+    'id',
+    'related_events',
+    'possession',
+    'possession_team',
+    'possession_team_id',
+    'minute',
+    'second',
+
+    # foul_* attribute columns
+    'foul_committed_advantage',
+    'foul_committed_card',
+    'foul_committed_offensive',
+    'foul_committed_type',
+    'foul_committed_penalty',
+    'foul_won_advantage',
+    'foul_won_defensive',
+    'foul_won_penalty',
+
+    # goalkeeper_* attribute columns
+    'goalkeeper_body_part',
+    'goalkeeper_outcome',
+    'goalkeeper_position',
+    'goalkeeper_technique',
+    'goalkeeper_type',
+
+    # pass_* attribute columns
+    'pass_aerial_won',
+    'pass_angle',
+    'pass_assisted_shot_id',
+    'pass_body_part',
+    'pass_cross',
+    'pass_cut_back',
+    'pass_deflected',
+    'pass_goal_assist',
+    'pass_height',
+    'pass_length',
+    'pass_outcome',
+    'pass_recipient',
+    'pass_recipient_id',
+    'pass_shot_assist',
+    'pass_switch',
+    'pass_technique',
+    'pass_through_ball',
+    'pass_type',
+
+    # shot_* attribute columns
+    'shot_aerial_won',
+    'shot_body_part',
+    'shot_key_pass_id',
+    'shot_one_on_one',
+    'shot_first_time',
+    'shot_technique',
+    'shot_type',
+    'shot_statsbomb_xg'
+]
 
 class ColumnPruner(Transformer):
 
-
-    def __init__(self, columns=None):
+    def __init__(self, columns=None,flag="PRE"):
         if columns is None:
-            columns =DROP_COLS
+            if flag == "PRE":
+                columns = DROP_COLS_PRE_FEATURE_ENG
+            elif flag == "POST":
+                columns = DROP_COLS_POST_FEATURE_ENG
         self.columns = columns
     @override
     def transform(self, df:pd.DataFrame) -> pd.DataFrame:

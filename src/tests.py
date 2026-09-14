@@ -1185,3 +1185,146 @@ class TestBallSpeed:
         shuffled = df.sample(frac=1, random_state=8)
         result = BallSpeed().transform(shuffled)
         np.testing.assert_allclose(result.ball_speed, np.asarray(expected)[shuffled.index], equal_nan=True)
+
+# ---------------------------------------------------------------------
+# DistNearestDefender
+# ---------------------------------------------------------------------
+
+class TestDistNearestDefender:
+    def test_empty_opponent_list_produces_nan(self):
+        df = pd.DataFrame({
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'opponent_locations': [[]],
+        })
+        result = DistNearestDefender().transform(df)
+        assert pd.isna(result['dist_nearest_defender'].iloc[0])
+
+    def test_single_opponent_correct_distance(self):
+        df = pd.DataFrame({
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'opponent_locations': [[(3.0, 4.0)]],
+        })
+        result = DistNearestDefender().transform(df)
+        assert result['dist_nearest_defender'].iloc[0] == pytest.approx(5.0)
+
+    def test_picks_nearest_of_multiple_opponents(self):
+        df = pd.DataFrame({
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'opponent_locations': [[(10.0, 0.0), (1.0, 0.0), (5.0, 0.0)]],
+        })
+        result = DistNearestDefender().transform(df)
+        assert result['dist_nearest_defender'].iloc[0] == pytest.approx(1.0)
+
+    def test_invalid_opponent_entry_is_filtered_out(self):
+        # a (nan, nan) tuple, as FreezeFrameExtractor can produce, should
+        # be ignored rather than corrupting the min.
+        df = pd.DataFrame({
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'opponent_locations': [[(np.nan, np.nan), (2.0, 0.0)]],
+        })
+        result = DistNearestDefender().transform(df)
+        assert result['dist_nearest_defender'].iloc[0] == pytest.approx(2.0)
+
+    def test_all_invalid_opponents_produces_nan(self):
+        df = pd.DataFrame({
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'opponent_locations': [[(np.nan, np.nan)]],
+        })
+        result = DistNearestDefender().transform(df)
+        assert pd.isna(result['dist_nearest_defender'].iloc[0])
+
+    def test_nan_ball_position_produces_nan(self):
+        df = pd.DataFrame({
+            'ball_x_start': [np.nan], 'ball_y_start': [0.0],
+            'opponent_locations': [[(2.0, 0.0)]],
+        })
+        result = DistNearestDefender().transform(df)
+        assert pd.isna(result['dist_nearest_defender'].iloc[0])
+
+    def test_missing_column_raises_keyerror(self):
+        df = pd.DataFrame({'ball_x_start': [0.0], 'ball_y_start': [0.0]})
+        with pytest.raises(KeyError):
+            DistNearestDefender().transform(df)
+
+    def test_does_not_mutate_original_df(self):
+        df = pd.DataFrame({
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'opponent_locations': [[(2.0, 0.0)]],
+        })
+        DistNearestDefender().transform(df)
+        assert 'dist_nearest_defender' not in df.columns
+
+
+# ---------------------------------------------------------------------
+# DefendersIn3m
+# ---------------------------------------------------------------------
+
+class TestDefendersIn3m:
+    def test_empty_opponent_list_produces_zero(self):
+        df = pd.DataFrame({
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'opponent_locations': [[]],
+        })
+        result = DefendersIn3m().transform(df)
+        assert result['defenders_in_3m'].iloc[0] == 0
+
+    def test_counts_only_opponents_within_radius(self):
+        df = pd.DataFrame({
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'opponent_locations': [[(1.0, 0.0), (2.0, 0.0), (5.0, 0.0)]],
+        })
+        result = DefendersIn3m().transform(df)
+        assert result['defenders_in_3m'].iloc[0] == 2
+
+    def test_radius_boundary_is_inclusive(self):
+        df = pd.DataFrame({
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'opponent_locations': [[(3.0, 0.0)]],
+        })
+        result = DefendersIn3m().transform(df)
+        assert result['defenders_in_3m'].iloc[0] == 1
+
+    def test_invalid_opponent_entry_is_filtered_out(self):
+        df = pd.DataFrame({
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'opponent_locations': [[(np.nan, np.nan), (1.0, 0.0)]],
+        })
+        result = DefendersIn3m().transform(df)
+        assert result['defenders_in_3m'].iloc[0] == 1
+
+    def test_nan_ball_position_produces_nan(self):
+        df = pd.DataFrame({
+            'ball_x_start': [np.nan], 'ball_y_start': [0.0],
+            'opponent_locations': [[(1.0, 0.0)]],
+        })
+        result = DefendersIn3m().transform(df)
+        assert pd.isna(result['defenders_in_3m'].iloc[0])
+
+    def test_custom_radius(self):
+        df = pd.DataFrame({
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'opponent_locations': [[(4.0, 0.0)]],
+        })
+        result = DefendersIn3m(radius=5).transform(df)
+        assert result['defenders_in_3m'].iloc[0] == 1
+
+    def test_invalid_radius_raises_valueerror(self):
+        with pytest.raises(ValueError):
+            DefendersIn3m(radius=-1)
+        with pytest.raises(ValueError):
+            DefendersIn3m(radius=np.inf)
+        with pytest.raises(ValueError):
+            DefendersIn3m(radius=True)
+
+    def test_missing_column_raises_keyerror(self):
+        df = pd.DataFrame({'ball_x_start': [0.0], 'ball_y_start': [0.0]})
+        with pytest.raises(KeyError):
+            DefendersIn3m().transform(df)
+
+    def test_does_not_mutate_original_df(self):
+        df = pd.DataFrame({
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'opponent_locations': [[(1.0, 0.0)]],
+        })
+        DefendersIn3m().transform(df)
+        assert 'defenders_in_3m' not in df.columns

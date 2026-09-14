@@ -3,7 +3,12 @@ import pandas as pd
 from src.features.pipeline import Pipeline
 from src.features.transformers.cleaning.column_pruner import ColumnPruner
 from src.features.transformers.cleaning.boolean_encoder import BooleanEncoder
-from src.features.transformers.features.trajectory_features import GoalOutcomeTransformer
+from src.features.transformers.features.full_tier_features import TeamCentroidDistance, OpenAngleGoal
+from src.features.transformers.features.geometry_features import DistToGoal, ShotAngle, InPenaltyBox
+from src.features.transformers.features.motion_features import BallSpeed
+from src.features.transformers.features.pressure_features import DistNearestDefender, DefendersIn3m
+from src.features.transformers.features.trajectory_features import GoalOutcomeTransformer, TrajectoryAngle, \
+    TrajectoryLength
 from src.features.transformers.cleaning.location_splitter import LocationSplitter
 from src.features.transformers.cleaning.coordinate_rescaler import CoordinateRescaler
 from src.features.transformers.cleaning.time_parser import TimeParser
@@ -42,18 +47,27 @@ def build_features(input_path: str = None, output_dir: str = None):
     # Concatenate only the filtered subset of relevant events
     events_df = pd.concat(filtered_dfs, ignore_index=True)
 
-    pipeline=Pipeline([ColumnPruner(),LocationSplitter(),CoordinateRescaler(),BooleanEncoder(),TimeParser(),FreezeFrameExtractor(),GoalOutcomeTransformer()])
+
+    pipeline=Pipeline([ColumnPruner(flag="PRE"),LocationSplitter(),CoordinateRescaler(),BooleanEncoder(),TimeParser()
+                        ,FreezeFrameExtractor(),DistToGoal(),ShotAngle(),InPenaltyBox(),GoalOutcomeTransformer(),
+                        TrajectoryAngle(),TrajectoryLength(),DistNearestDefender(),DefendersIn3m(),BallSpeed(),
+                       TeamCentroidDistance(),OpenAngleGoal(),ColumnPruner(flag="POST")])
+
+    statsbomb_xg_validation=events_df[events_df['type']=='Shot'][['id','match_id','shot_statsbomb_xg']]
     master_df=pipeline.transform(events_df)
 
+    print(master_df.columns)
+    print(master_df.dtypes)
+    print(master_df.shape)
 
-    # Save the processed subset to disk
 
-    # lsa e7na 3ayzen n3ml feature eng a3tkd elawl abl 3lshan ntl3 final filtered data ely
-    # e7na 3awzenha w b3den n save it in dir
+    master_df_output_path = os.path.join(output_dir, 'master_df.parquet')
+    master_df.to_parquet(master_df_output_path, index=False)
 
-    # output_path = os.path.join(output_dir, 'filtered_required_events.parquet')
-    # events_df.to_parquet(output_path, index=False)
-    # print(f"Saved filtered events to {output_path}")
+    statsbomb_xg_validation_output_path = os.path.join(output_dir, 'statsbomb_xg.parquet')
+    statsbomb_xg_validation.to_parquet(statsbomb_xg_validation_output_path, index=False)
+    print(f"Saved master df to {master_df_output_path}")
+    print(f"Saved statsbomb_xg to {statsbomb_xg_validation_output_path}")
 
 
 
