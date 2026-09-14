@@ -2,3 +2,4 @@ pandas>=2.0.0
 statsbombpy>=1.7.0
 pyarrow>=11.0.0
 numpy>=1.25.0
+pytest
