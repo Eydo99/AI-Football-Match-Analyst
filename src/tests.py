@@ -24,6 +24,8 @@ from src.features.transformers.cleaning.freeze_frame_extractor import FreezeFram
 from src.features.pipeline import Pipeline
 from src.features.transformers.features.full_tier_features import TeamCentroidDistance
 from src.features.transformers.features.full_tier_features import OpenAngleGoal
+from src.features.transformers.features.geometry_features import DistToGoal, ShotAngle, InPenaltyBox
+from src.features.transformers.features.trajectory_features import TrajectoryLength, TrajectoryAngle
 
 # ---------------------------------------------------------------------
 # safe_extract
@@ -581,3 +583,302 @@ class TestOpenAngleGoal:
         })
         OpenAngleGoal().transform(df)
         assert 'open_angle_goal' not in df.columns
+
+# ---------------------------------------------------------------------
+# DistToGoal
+# ---------------------------------------------------------------------
+
+class TestDistToGoal:
+    def test_ball_at_goal_center_distance_zero(self):
+        df = pd.DataFrame({'ball_x_start': [105.0], 'ball_y_start': [34.0]})
+        result = DistToGoal().transform(df)
+        assert result['dist_to_goal'].iloc[0] == pytest.approx(0.0)
+
+    def test_known_distance_from_center_spot(self):
+        # Center spot is (52.5, 34) -- distance to goal is a known value
+        df = pd.DataFrame({'ball_x_start': [52.5], 'ball_y_start': [34.0]})
+        result = DistToGoal().transform(df)
+        assert result['dist_to_goal'].iloc[0] == pytest.approx(52.5)
+
+    def test_uses_custom_columns(self):
+        df = pd.DataFrame({'custom_x': [105.0], 'custom_y': [34.0]})
+        result = DistToGoal(x_col='custom_x', y_col='custom_y').transform(df)
+        assert result['dist_to_goal'].iloc[0] == pytest.approx(0.0)
+
+    def test_nan_input_produces_nan_output(self):
+        df = pd.DataFrame({'ball_x_start': [np.nan], 'ball_y_start': [40.0]})
+        result = DistToGoal().transform(df)
+        assert pd.isna(result['dist_to_goal'].iloc[0])
+
+    def test_missing_column_raises_keyerror(self):
+        df = pd.DataFrame({'ball_x_start': [50.0]})
+        with pytest.raises(KeyError):
+            DistToGoal().transform(df)
+
+    def test_does_not_mutate_original_df(self):
+        df = pd.DataFrame({'ball_x_start': [50.0], 'ball_y_start': [40.0]})
+        DistToGoal().transform(df)
+        assert 'dist_to_goal' not in df.columns
+
+
+# ---------------------------------------------------------------------
+# ShotAngle
+# ---------------------------------------------------------------------
+
+class TestShotAngle:
+    def test_ball_on_goal_line_between_posts_is_pi(self):
+        # Standing right on the goal line, between the posts, the angle
+        # subtended should be the full straight angle: pi radians.
+        df = pd.DataFrame({'ball_x_start': [105.0], 'ball_y_start': [34.0]})
+        result = ShotAngle().transform(df)
+        assert result['shot_angle'].iloc[0] == pytest.approx(np.pi, abs=1e-6)
+
+    def test_angle_decreases_further_from_goal(self):
+        close_df = pd.DataFrame({'ball_x_start': [95.0], 'ball_y_start': [34.0]})
+        far_df = pd.DataFrame({'ball_x_start': [20.0], 'ball_y_start': [34.0]})
+        close_angle = ShotAngle().transform(close_df)['shot_angle'].iloc[0]
+        far_angle = ShotAngle().transform(far_df)['shot_angle'].iloc[0]
+        assert close_angle > far_angle
+
+    def test_angle_is_symmetric_about_goal_center_y(self):
+        # Same x, mirrored y around the goal's center (y=34) should give
+        # the same angle magnitude.
+        above_df = pd.DataFrame({'ball_x_start': [70.0], 'ball_y_start': [44.0]})
+        below_df = pd.DataFrame({'ball_x_start': [70.0], 'ball_y_start': [24.0]})
+        above_angle = ShotAngle().transform(above_df)['shot_angle'].iloc[0]
+        below_angle = ShotAngle().transform(below_df)['shot_angle'].iloc[0]
+        assert above_angle == pytest.approx(below_angle)
+
+    def test_angle_is_nonnegative(self):
+        df = pd.DataFrame({'ball_x_start': [10.0], 'ball_y_start': [60.0]})
+        result = ShotAngle().transform(df)
+        assert result['shot_angle'].iloc[0] >= 0
+
+    def test_missing_column_raises_keyerror(self):
+        df = pd.DataFrame({'ball_x_start': [50.0]})
+        with pytest.raises(KeyError):
+            ShotAngle().transform(df)
+
+    def test_does_not_mutate_original_df(self):
+        df = pd.DataFrame({'ball_x_start': [50.0], 'ball_y_start': [40.0]})
+        ShotAngle().transform(df)
+        assert 'shot_angle' not in df.columns
+
+
+# ---------------------------------------------------------------------
+# InPenaltyBox
+# ---------------------------------------------------------------------
+
+class TestInPenaltyBox:
+    def test_point_inside_box_returns_1(self):
+        df = pd.DataFrame({'ball_x_start': [95.0], 'ball_y_start': [34.0]})
+        result = InPenaltyBox().transform(df)
+        assert result['in_penalty_box'].iloc[0] == 1
+
+    def test_point_outside_box_x_returns_0(self):
+        df = pd.DataFrame({'ball_x_start': [80.0], 'ball_y_start': [34.0]})
+        result = InPenaltyBox().transform(df)
+        assert result['in_penalty_box'].iloc[0] == 0
+
+    def test_point_outside_box_y_returns_0(self):
+        df = pd.DataFrame({'ball_x_start': [95.0], 'ball_y_start': [60.0]})
+        result = InPenaltyBox().transform(df)
+        assert result['in_penalty_box'].iloc[0] == 0
+
+    def test_boundary_values_are_inclusive(self):
+        df = pd.DataFrame({
+            'ball_x_start': [88.5, 88.5],
+            'ball_y_start': [13.84, 54.16],
+        })
+        result = InPenaltyBox().transform(df)
+        assert result['in_penalty_box'].tolist() == [1, 1]
+
+    def test_nan_input_returns_0_not_nan(self):
+        df = pd.DataFrame({'ball_x_start': [np.nan], 'ball_y_start': [34.0]})
+        result = InPenaltyBox().transform(df)
+        assert result['in_penalty_box'].iloc[0] == 0
+
+    def test_missing_column_raises_keyerror(self):
+        df = pd.DataFrame({'ball_x_start': [50.0]})
+        with pytest.raises(KeyError):
+            InPenaltyBox().transform(df)
+
+    def test_does_not_mutate_original_df(self):
+        df = pd.DataFrame({'ball_x_start': [50.0], 'ball_y_start': [40.0]})
+        InPenaltyBox().transform(df)
+        assert 'in_penalty_box' not in df.columns
+
+
+# ---------------------------------------------------------------------
+# TrajectoryLength
+# ---------------------------------------------------------------------
+
+class TestTrajectoryLength:
+    def test_pass_uses_pass_end_location(self):
+        df = pd.DataFrame({
+            'type': ['Pass'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'pass_x_end': [3.0], 'pass_y_end': [4.0],
+            'shot_x_end': [999.0], 'shot_y_end': [999.0],
+        })
+        result = TrajectoryLength().transform(df)
+        assert result['trajectory_length'].iloc[0] == pytest.approx(5.0)
+
+    def test_shot_uses_shot_end_location(self):
+        df = pd.DataFrame({
+            'type': ['Shot'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'shot_x_end': [6.0], 'shot_y_end': [8.0],
+        })
+        result = TrajectoryLength().transform(df)
+        assert result['trajectory_length'].iloc[0] == pytest.approx(10.0)
+
+    def test_carry_uses_carry_end_location(self):
+        df = pd.DataFrame({
+            'type': ['Carry'],
+            'ball_x_start': [1.0], 'ball_y_start': [1.0],
+            'carry_x_end': [4.0], 'carry_y_end': [5.0],
+        })
+        result = TrajectoryLength().transform(df)
+        assert result['trajectory_length'].iloc[0] == pytest.approx(5.0)
+
+    def test_goalkeeper_uses_goalkeeper_end_location(self):
+        df = pd.DataFrame({
+            'type': ['Goal Keeper'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'goalkeeper_x_end': [3.0], 'goalkeeper_y_end': [4.0],
+        })
+        result = TrajectoryLength().transform(df)
+        assert result['trajectory_length'].iloc[0] == pytest.approx(5.0)
+
+    def test_event_type_outside_map_produces_nan(self):
+        df = pd.DataFrame({
+            'type': ['Pressure'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+        })
+        result = TrajectoryLength().transform(df)
+        assert pd.isna(result['trajectory_length'].iloc[0])
+
+    def test_mixed_event_types_each_use_correct_column(self):
+        df = pd.DataFrame({
+            'type': ['Pass', 'Shot'],
+            'ball_x_start': [0.0, 0.0], 'ball_y_start': [0.0, 0.0],
+            'pass_x_end': [3.0, 999.0], 'pass_y_end': [4.0, 999.0],
+            'shot_x_end': [999.0, 6.0], 'shot_y_end': [999.0, 8.0],
+        })
+        result = TrajectoryLength().transform(df)
+        assert result['trajectory_length'].tolist() == pytest.approx([5.0, 10.0])
+
+    def test_helper_columns_not_leaked_into_output(self):
+        df = pd.DataFrame({
+            'type': ['Pass'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'pass_x_end': [3.0], 'pass_y_end': [4.0],
+        })
+        result = TrajectoryLength().transform(df)
+        assert '_x_end' not in result.columns
+        assert '_y_end' not in result.columns
+
+    def test_does_not_mutate_original_df(self):
+        df = pd.DataFrame({
+            'type': ['Pass'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'pass_x_end': [3.0], 'pass_y_end': [4.0],
+        })
+        TrajectoryLength().transform(df)
+        assert 'trajectory_length' not in df.columns
+        assert '_x_end' not in df.columns
+
+    def test_missing_start_column_raises_keyerror(self):
+        df = pd.DataFrame({'type': ['Pass'], 'ball_y_start': [0.0]})
+        with pytest.raises(KeyError):
+            TrajectoryLength().transform(df)
+
+    def test_missing_type_column_raises_keyerror(self):
+        df = pd.DataFrame({'ball_x_start': [0.0], 'ball_y_start': [0.0]})
+        with pytest.raises(KeyError):
+            TrajectoryLength().transform(df)
+
+    def test_missing_end_column_for_present_type_raises_keyerror(self):
+        # 'Pass' rows exist but pass_x_end isn't in the df at all
+        df = pd.DataFrame({
+            'type': ['Pass'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+        })
+        with pytest.raises(KeyError):
+            TrajectoryLength().transform(df)
+
+
+# ---------------------------------------------------------------------
+# TrajectoryAngle
+# ---------------------------------------------------------------------
+
+class TestTrajectoryAngle:
+    def test_pass_uses_pass_end_location(self):
+        df = pd.DataFrame({
+            'type': ['Pass'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'pass_x_end': [1.0], 'pass_y_end': [0.0],
+        })
+        result = TrajectoryAngle().transform(df)
+        assert result['trajectory_angle'].iloc[0] == pytest.approx(0.0)
+
+    def test_shot_uses_shot_end_location(self):
+        df = pd.DataFrame({
+            'type': ['Shot'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'shot_x_end': [0.0], 'shot_y_end': [1.0],
+        })
+        result = TrajectoryAngle().transform(df)
+        assert result['trajectory_angle'].iloc[0] == pytest.approx(np.pi / 2)
+
+    def test_event_type_outside_map_produces_nan(self):
+        df = pd.DataFrame({
+            'type': ['Foul Won'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+        })
+        result = TrajectoryAngle().transform(df)
+        assert pd.isna(result['trajectory_angle'].iloc[0])
+
+    def test_angle_range_is_within_pi(self):
+        df = pd.DataFrame({
+            'type': ['Pass'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'pass_x_end': [-1.0], 'pass_y_end': [-1.0],
+        })
+        result = TrajectoryAngle().transform(df)
+        angle = result['trajectory_angle'].iloc[0]
+        assert -np.pi <= angle <= np.pi
+
+    def test_helper_columns_not_leaked_into_output(self):
+        df = pd.DataFrame({
+            'type': ['Pass'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'pass_x_end': [1.0], 'pass_y_end': [0.0],
+        })
+        result = TrajectoryAngle().transform(df)
+        assert '_x_end' not in result.columns
+        assert '_y_end' not in result.columns
+
+    def test_does_not_mutate_original_df(self):
+        df = pd.DataFrame({
+            'type': ['Pass'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+            'pass_x_end': [1.0], 'pass_y_end': [0.0],
+        })
+        TrajectoryAngle().transform(df)
+        assert 'trajectory_angle' not in df.columns
+        assert '_x_end' not in df.columns
+
+    def test_missing_type_column_raises_keyerror(self):
+        df = pd.DataFrame({'ball_x_start': [0.0], 'ball_y_start': [0.0]})
+        with pytest.raises(KeyError):
+            TrajectoryAngle().transform(df)
+
+    def test_missing_end_column_for_present_type_raises_keyerror(self):
+        df = pd.DataFrame({
+            'type': ['Shot'],
+            'ball_x_start': [0.0], 'ball_y_start': [0.0],
+        })
+        with pytest.raises(KeyError):
+            TrajectoryAngle().transform(df)
