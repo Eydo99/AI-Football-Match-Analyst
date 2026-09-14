@@ -5,9 +5,13 @@ from statsbombpy import sb
 from statsbombpy.api_client import NoAuthWarning
 
 warnings.simplefilter('ignore', category=NoAuthWarning)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-def fetch_and_save_data(output_dir='data/raw'):
-  
+def fetch_and_save_data(output_dir=None):
+
+    if output_dir is None:
+        output_dir = os.path.join(PROJECT_ROOT, 'data', 'raw')
+
     os.makedirs(output_dir, exist_ok=True)
     events_dir = os.path.join(output_dir, 'events')
     os.makedirs(events_dir, exist_ok=True)

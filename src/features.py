@@ -45,10 +45,6 @@ def build_features(input_path: str = None, output_dir: str = None):
     pipeline=Pipeline([ColumnPruner(),LocationSplitter(),CoordinateRescaler(),BooleanEncoder(),TimeParser(),FreezeFrameExtractor(),GoalOutcomeTransformer()])
     master_df=pipeline.transform(events_df)
 
-    print('match_id' in master_df.columns)
-    print([c for c in master_df.columns if 'match' in c.lower() or 'id' in c.lower()])
-    print(master_df['match_id'].nunique())
-    print(master_df['match_id'].dtype)
 
     # Save the processed subset to disk
 
