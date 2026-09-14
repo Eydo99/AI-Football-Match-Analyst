@@ -6,6 +6,9 @@ from src.features.base import Transformer
 
 
 class TeamCentroidDistance(Transformer):
+
+    Requires = ['opponent_locations', 'ball_x_start', 'ball_y_start']
+
     def __init__(self):
         pass
 
@@ -19,12 +22,20 @@ class TeamCentroidDistance(Transformer):
 
     @override
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+
+        missing_columns = [col for col in self.Requires if col not in df.columns]
+        if missing_columns:
+            raise KeyError(f"TeamCentroidDistance requires columns {missing_columns}, not found in DataFrame")
+        
         transformed_df = df.copy()
         transformed_df['team_centroid_distance'] = transformed_df.apply(self.compute_centroid_dist,axis=1)
         return transformed_df
 
 
 class OpenAngleGoal(Transformer):
+
+    Requires = ['opponent_locations', 'ball_x_start', 'ball_y_start' , 'type']
+
     def __init__(self , player_width = None):
         if player_width is None:
             player_width = 0.5
@@ -84,6 +95,11 @@ class OpenAngleGoal(Transformer):
 
     @override
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        
+        missing_columns = [col for col in self.Requires if col not in df.columns]
+        if missing_columns:
+            raise KeyError(f"OpenAngleGoal requires columns {missing_columns}, not found in DataFrame")
+
         transformed_df = df.copy()
         transformed_df['open_angle_goal'] = transformed_df.apply(self.compute_open_angle_goal, axis=1)
         return transformed_df

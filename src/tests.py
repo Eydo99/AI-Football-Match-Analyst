@@ -406,6 +406,12 @@ class TestPipeline:
 # ---------------------------------------------------------------------
 
 class TestTeamCentroidDistance:
+    
+    def test_missing_column_raises_keyerror(self):
+        df = pd.DataFrame({'opponent_locations': [[(60.0, 30.0)]], 'ball_x_start': [50.0]})
+        with pytest.raises(KeyError):
+            TeamCentroidDistance().transform(df)
+
     def test_computes_distance_to_mean_opponent_position(self):
         # opponents at (60,30),(65,35),(58,40) -> centroid (61.0, 35.0)
         # ball at (50,34) -> distance = sqrt((61-50)^2 + (35-34)^2) ~= 11.045
@@ -460,6 +466,12 @@ class TestTeamCentroidDistance:
 # ---------------------------------------------------------------------
 
 class TestOpenAngleGoal:
+
+    def test_missing_column_raises_keyerror(self):
+        df = pd.DataFrame({'opponent_locations': [[(60.0, 30.0)]], 'ball_x_start': [50.0] , 'ball_y_start': [34.0]})
+        with pytest.raises(KeyError):
+            OpenAngleGoal().transform(df)
+
     def test_non_shot_row_produces_nan(self):
         df = pd.DataFrame({
             'type': ['Pass'],
