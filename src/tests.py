@@ -22,7 +22,8 @@ from src.features.transformers.cleaning.time_parser import TimeParser
 from src.features.utils import safe_extract
 from src.features.transformers.cleaning.freeze_frame_extractor import FreezeFrameExtractor
 from src.features.pipeline import Pipeline
-
+from src.features.transformers.features.full_tier_features import TeamCentroidDistance
+from src.features.transformers.features.full_tier_features import OpenAngleGoal
 
 # ---------------------------------------------------------------------
 # safe_extract
@@ -393,3 +394,190 @@ class TestPipeline:
         result = pipeline.transform(df)
         assert 'tactics' not in result.columns
         assert result['flag'].iloc[0] == 1
+
+# ---------------------------------------------------------------------
+# TeamCentroidDistance
+# ---------------------------------------------------------------------
+
+class TestTeamCentroidDistance:
+    def test_computes_distance_to_mean_opponent_position(self):
+        # opponents at (60,30),(65,35),(58,40) -> centroid (61.0, 35.0)
+        # ball at (50,34) -> distance = sqrt((61-50)^2 + (35-34)^2) ~= 11.045
+        df = pd.DataFrame({
+            'opponent_locations': [[(60.0, 30.0), (65.0, 35.0), (58.0, 40.0)]],
+            'ball_x_start': [50.0],
+            'ball_y_start': [34.0],
+        })
+        result = TeamCentroidDistance().transform(df)
+        assert result['team_centroid_distance'].iloc[0] == pytest.approx(11.045, abs=0.01)
+
+    def test_empty_opponent_list_produces_nan(self):
+        df = pd.DataFrame({
+            'opponent_locations': [[]],
+            'ball_x_start': [50.0],
+            'ball_y_start': [34.0],
+        })
+        result = TeamCentroidDistance().transform(df)
+        assert pd.isna(result['team_centroid_distance'].iloc[0])
+
+    def test_none_opponent_locations_produces_nan(self):
+        df = pd.DataFrame({
+            'opponent_locations': [None],
+            'ball_x_start': [50.0],
+            'ball_y_start': [34.0],
+        })
+        result = TeamCentroidDistance().transform(df)
+        assert pd.isna(result['team_centroid_distance'].iloc[0])
+
+    def test_nan_ball_position_produces_nan(self):
+        # pd.notna check must catch float NaN, not just None
+        df = pd.DataFrame({
+            'opponent_locations': [[(60.0, 30.0)]],
+            'ball_x_start': [np.nan],
+            'ball_y_start': [34.0],
+        })
+        result = TeamCentroidDistance().transform(df)
+        assert pd.isna(result['team_centroid_distance'].iloc[0])
+
+    def test_does_not_mutate_original_df(self):
+        df = pd.DataFrame({
+            'opponent_locations': [[(60.0, 30.0)]],
+            'ball_x_start': [50.0],
+            'ball_y_start': [34.0],
+        })
+        TeamCentroidDistance().transform(df)
+        assert 'team_centroid_distance' not in df.columns
+
+
+# ---------------------------------------------------------------------
+# OpenAngleGoal
+# ---------------------------------------------------------------------
+
+class TestOpenAngleGoal:
+    def test_non_shot_row_produces_nan(self):
+        df = pd.DataFrame({
+            'type': ['Pass'],
+            'opponent_locations': [[(100.0, 34.0)]],
+            'ball_x_start': [95.0],
+            'ball_y_start': [34.0],
+        })
+        result = OpenAngleGoal().transform(df)
+        assert pd.isna(result['open_angle_goal'].iloc[0])
+
+
+    def test_defender_outside_window_is_ignored(self):
+        # Defender B from the worked example: (98, 36) -> angle ~33.7 deg,
+        # well outside the ~[-20.1, 20.1] deg window -- should block nothing.
+        df = pd.DataFrame({
+            'type': ['Shot'],
+            'opponent_locations': [[(98.0, 36.0)]],
+            'ball_x_start': [95.0],
+            'ball_y_start': [34.0],
+        })
+        result = OpenAngleGoal().transform(df)
+        left = np.arctan2(30.34 - 34.0, 105 - 95.0)
+        right = np.arctan2(37.66 - 34.0, 105 - 95.0)
+        assert result['open_angle_goal'].iloc[0] == pytest.approx(right - left)
+
+    def test_defender_behind_ball_is_ignored(self):
+        # x < ball_x_start -- physically cannot block a shot toward x=105.
+        df = pd.DataFrame({
+            'type': ['Shot'],
+            'opponent_locations': [[(90.0, 34.0)]],
+            'ball_x_start': [95.0],
+            'ball_y_start': [34.0],
+        })
+        result = OpenAngleGoal().transform(df)
+        left = np.arctan2(30.34 - 34.0, 105 - 95.0)
+        right = np.arctan2(37.66 - 34.0, 105 - 95.0)
+        assert result['open_angle_goal'].iloc[0] == pytest.approx(right - left)
+
+    def test_single_defender_blocks_expected_wedge(self):
+        # Defender A from the worked example: (100, 34), distance 5 from
+        # ball, player_width 0.5 -> half_angle = atan(0.5/5).
+        df = pd.DataFrame({
+            'type': ['Shot'],
+            'opponent_locations': [[(100.0, 34.0)]],
+            'ball_x_start': [95.0],
+            'ball_y_start': [34.0],
+        })
+        result = OpenAngleGoal(player_width=0.5).transform(df)
+        left = np.arctan2(30.34 - 34.0, 105 - 95.0)
+        right = np.arctan2(37.66 - 34.0, 105 - 95.0)
+        half_angle = np.arctan2(0.5, 5.0)
+        expected = (right - left) - (2 * half_angle)
+        assert result['open_angle_goal'].iloc[0] == pytest.approx(expected)
+
+    def test_overlapping_defenders_are_merged_not_double_counted(self):
+        # Regression test for the bug where current_angle was pre-seeded
+        # from opponent_angles[0] (unsorted order) instead of None, which
+        # could duplicate or miscount an interval. Two defenders standing
+        # close together (overlapping wedges) must only have their union
+        # subtracted once, not the sum of both individual wedges.
+        df = pd.DataFrame({
+            'type': ['Shot'],
+            'opponent_locations': [[(100.0, 34.5), (100.0, 33.5)]],
+            'ball_x_start': [95.0],
+            'ball_y_start': [34.0],
+        })
+        result = OpenAngleGoal(player_width=2.0).transform(df)  # wide wedges force overlap
+        left = np.arctan2(30.34 - 34.0, 105 - 95.0)
+        right = np.arctan2(37.66 - 34.0, 105 - 95.0)
+        # naive (wrong) double-counted sum would give a smaller open angle
+        # than the correct merged result -- assert we get the larger (correct) one
+        d1 = np.sqrt((100.0 - 95.0) ** 2 + (34.5 - 34.0) ** 2)
+        d2 = np.sqrt((100.0 - 95.0) ** 2 + (33.5 - 34.0) ** 2)
+        half1 = np.arctan2(2.0, d1)
+        half2 = np.arctan2(2.0, d2)
+        naive_double_counted = (right - left) - (2 * half1 + 2 * half2)
+        assert result['open_angle_goal'].iloc[0] > naive_double_counted
+
+    def test_wedge_extending_past_post_is_clipped(self):
+        # A defender whose wedge would extend past the right post must be
+        # clipped to the post angle, not allowed to "block" empty space
+        # outside the goal window.
+        df = pd.DataFrame({
+            'type': ['Shot'],
+            'opponent_locations': [[(96.0, 40.0)]],  # near-window-edge, wide wedge
+            'ball_x_start': [95.0],
+            'ball_y_start': [34.0],
+        })
+        result = OpenAngleGoal(player_width=5.0).transform(df)
+        left = np.arctan2(30.34 - 34.0, 105 - 95.0)
+        right = np.arctan2(37.66 - 34.0, 105 - 95.0)
+        assert result['open_angle_goal'].iloc[0] >= 0.0
+        assert result['open_angle_goal'].iloc[0] <= (right - left)
+
+    def test_open_angle_never_negative(self):
+        # Many close, wide-wedge defenders could sum past the full window --
+        # result must clamp at 0, never go negative.
+        df = pd.DataFrame({
+            'type': ['Shot'],
+            'opponent_locations': [
+                [(96.0, 34.0), (97.0, 35.0), (98.0, 33.0), (99.0, 34.5)]
+            ],
+            'ball_x_start': [95.0],
+            'ball_y_start': [34.0],
+        })
+        result = OpenAngleGoal(player_width=5.0).transform(df)
+        assert result['open_angle_goal'].iloc[0] >= 0.0
+
+    def test_missing_ball_position_produces_nan(self):
+        df = pd.DataFrame({
+            'type': ['Shot'],
+            'opponent_locations': [[(100.0, 34.0)]],
+            'ball_x_start': [np.nan],
+            'ball_y_start': [34.0],
+        })
+        result = OpenAngleGoal().transform(df)
+        assert pd.isna(result['open_angle_goal'].iloc[0])
+
+    def test_does_not_mutate_original_df(self):
+        df = pd.DataFrame({
+            'type': ['Shot'],
+            'opponent_locations': [[(100.0, 34.0)]],
+            'ball_x_start': [95.0],
+            'ball_y_start': [34.0],
+        })
+        OpenAngleGoal().transform(df)
+        assert 'open_angle_goal' not in df.columns
