@@ -17,12 +17,15 @@ class BallSpeed(Transformer):
 
     this is displacement between recorded event starts, not tracking-derived
     instantaneous ball velocity. first rows, missing inputs, and non-positive
-    time differences yield nan. short intervals can amplify location noise;
-    finite values are not clipped or smoothed. the original row order and index
+    time differences yield nan. short intervals can amplify location noise, so
+    intervals below min_elapsed are also treated as unknown (nan) rather than
+    computed, and any remaining finite value is capped at max_speed to guard
+    against residual noise amplification. the original row order and index
     are preserved.
     """
 
-    def __init__(self, time_col=None, x_col=None, y_col=None, group_col=None):
+    def __init__(self, time_col=None, x_col=None, y_col=None, group_col=None,
+                 min_elapsed=0.1, max_speed=60.0):
         # keep the existing constructor and allow alternate input schemas.
         self.time_col = 'event_time_seconds' if time_col is None else time_col
         self.x_col = 'ball_x_start' if x_col is None else x_col
@@ -34,6 +37,18 @@ class BallSpeed(Transformer):
         if not isinstance(group_col, (list, tuple)) or not group_col:
             raise ValueError('group_col must be a column name or a non-empty list of names')
         self.group_col = list(group_col)
+
+        # min_elapsed guards against near-zero time denominators amplifying
+        # ordinary positional noise into implausible speeds. max_speed is a
+        # final physical sanity cap applied after that guard, not a substitute
+        # for it — clipping alone would still fabricate a value for an
+        # interval that was never trustworthy to begin with.
+        if min_elapsed <= 0:
+            raise ValueError('min_elapsed must be positive')
+        if max_speed <= 0:
+            raise ValueError('max_speed must be positive')
+        self.min_elapsed = min_elapsed
+        self.max_speed = max_speed
 
     @override
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -65,7 +80,11 @@ class BallSpeed(Transformer):
         work = work.sort_values(['group', 'time', 'event_order', 'row_order'])
         grouped = work.groupby('group', sort=False)
         deltas = grouped[['time', 'x', 'y']].diff()
-        elapsed = deltas['time'].where(deltas['time'] > 0)
+
+        # below min_elapsed, the denominator is unreliable enough that any
+        # resulting "speed" is more likely to reflect positional noise than
+        # real movement — treat it as unknown rather than computing it.
+        elapsed = deltas['time'].where(deltas['time'] > self.min_elapsed)
         speed = np.hypot(deltas['x'], deltas['y']) / elapsed
 
         if 'team' in work.columns:
@@ -78,5 +97,10 @@ class BallSpeed(Transformer):
         # invalid intervals remain unknown, and positional alignment handles
         # duplicate dataframe indices without mixing up the results.
         speed = speed.where(np.isfinite(speed))
+
+        # final physical sanity cap on whatever remains, as a second line of
+        # defense against noise the min_elapsed guard doesn't catch.
+        speed = speed.clip(upper=self.max_speed)
+
         transformed_df['ball_speed'] = speed.reindex(range(len(source))).to_numpy()
         return transformed_df
