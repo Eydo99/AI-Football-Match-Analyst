@@ -1,4 +1,3 @@
-
 from abc import abstractmethod
 
 from sklearn.model_selection import GroupShuffleSplit, StratifiedGroupKFold, RandomizedSearchCV
@@ -55,6 +54,6 @@ class EventClassificationBaseModel(BaseModel):
             raise RuntimeError("Call train() before predict_proba().")
         return self.best_estimator_.predict_proba(X)
 
-    def evaluate(self, plot: bool = True) -> dict:
-        from src.models.event_evaluation import evaluate_event_model
-        return evaluate_event_model(self, self.__class__.__name__, plot=plot)
+    def get_evaluator(self):
+        from src.models.evaluation import EventEvaluator
+        return EventEvaluator()
