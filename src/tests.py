@@ -30,6 +30,9 @@ from src.features.transformers.features.trajectory_features import TrajectoryLen
 from src.features.transformers.features.pressure_features import (
     DistNearestDefender, DefendersIn3m,
 )
+from src.features.transformers.cleaning.ball_speed_imputer import BallSpeedImputer
+from src.features.transformers.cleaning.opponent_data_dropper import OpponentDataDropper
+from src.features.transformers.cleaning.shot_filter import ShotFilter
 
 # ---------------------------------------------------------------------
 # safe_extract
@@ -1340,3 +1343,154 @@ class TestDefendersIn3m:
         })
         DefendersIn3m().transform(df)
         assert 'defenders_in_3m' not in df.columns
+
+
+
+# ---------------------------------------------------------------------
+# BallSpeedImputer
+# ---------------------------------------------------------------------
+
+class TestBallSpeedImputer:
+    def test_adds_missingness_flag_column(self):
+        df = pd.DataFrame({'ball_speed': [1.0, np.nan, 3.0]})
+        result = BallSpeedImputer().transform(df)
+        assert 'ball_speed_missing' in result.columns
+
+    def test_flag_is_1_for_missing_0_for_present(self):
+        df = pd.DataFrame({'ball_speed': [1.0, np.nan, 3.0]})
+        result = BallSpeedImputer().transform(df)
+        assert result['ball_speed_missing'].tolist() == [0, 1, 0]
+
+    def test_fills_nan_with_median_of_present_values(self):
+        # median of [1.0, 3.0, 5.0] (NaN excluded) is 3.0
+        df = pd.DataFrame({'ball_speed': [1.0, np.nan, 3.0, 5.0]})
+        result = BallSpeedImputer().transform(df)
+        assert result['ball_speed'].tolist() == [1.0, 3.0, 3.0, 5.0]
+
+    def test_no_missing_values_leaves_column_unchanged(self):
+        df = pd.DataFrame({'ball_speed': [1.0, 2.0, 3.0]})
+        result = BallSpeedImputer().transform(df)
+        assert result['ball_speed'].tolist() == [1.0, 2.0, 3.0]
+        assert result['ball_speed_missing'].tolist() == [0, 0, 0]
+
+    def test_all_values_missing_flag_all_1_and_stays_nan(self):
+        # median of an all-NaN series is NaN, so fillna has nothing to fill with
+        df = pd.DataFrame({'ball_speed': [np.nan, np.nan]})
+        result = BallSpeedImputer().transform(df)
+        assert result['ball_speed_missing'].tolist() == [1, 1]
+        assert result['ball_speed'].isna().all()
+
+    def test_does_not_mutate_original_df(self):
+        df = pd.DataFrame({'ball_speed': [1.0, np.nan, 3.0]})
+        BallSpeedImputer().transform(df)
+        assert df['ball_speed'].isna().sum() == 1
+        assert 'ball_speed_missing' not in df.columns
+
+    def test_missing_column_raises_keyerror(self):
+        df = pd.DataFrame({'not_ball_speed': [1.0, 2.0]})
+        with pytest.raises(KeyError):
+            BallSpeedImputer().transform(df)
+
+
+# ---------------------------------------------------------------------
+# OpponentDataDropper
+# ---------------------------------------------------------------------
+
+class TestOpponentDataDropper:
+    REQUIRED = ['dist_nearest_defender', 'team_centroid_distance', 'open_angle_goal']
+
+    def _full_frame(self):
+        return pd.DataFrame({
+            'dist_nearest_defender': [1.0, np.nan, 3.0],
+            'team_centroid_distance': [10.0, 20.0, 30.0],
+            'open_angle_goal': [0.1, 0.2, 0.3],
+        })
+
+    def test_drops_rows_with_nan_dist_nearest_defender(self):
+        df = self._full_frame()
+        result = OpponentDataDropper().transform(df)
+        assert result['dist_nearest_defender'].tolist() == [1.0, 3.0]
+
+    def test_keeps_rows_where_other_required_columns_are_nan(self):
+        # only dist_nearest_defender governs the drop
+        df = pd.DataFrame({
+            'dist_nearest_defender': [1.0, 2.0],
+            'team_centroid_distance': [np.nan, 20.0],
+            'open_angle_goal': [0.1, np.nan],
+        })
+        result = OpponentDataDropper().transform(df)
+        assert len(result) == 2
+
+    def test_no_missing_values_returns_all_rows(self):
+        df = self._full_frame().dropna()
+        result = OpponentDataDropper().transform(df)
+        assert len(result) == len(df)
+
+    def test_preserves_index_of_kept_rows(self):
+        df = self._full_frame()
+        result = OpponentDataDropper().transform(df)
+        assert result.index.tolist() == [0, 2]
+
+    def test_does_not_mutate_original_df(self):
+        df = self._full_frame()
+        OpponentDataDropper().transform(df)
+        assert df['dist_nearest_defender'].isna().sum() == 1
+        assert len(df) == 3
+
+    @pytest.mark.parametrize('missing_col', REQUIRED)
+    def test_missing_required_column_raises_keyerror(self, missing_col):
+        df = self._full_frame().drop(columns=[missing_col])
+        with pytest.raises(KeyError):
+            OpponentDataDropper().transform(df)
+
+    def test_error_message_lists_all_missing_columns(self):
+        df = self._full_frame().drop(columns=['team_centroid_distance', 'open_angle_goal'])
+        with pytest.raises(KeyError) as excinfo:
+            OpponentDataDropper().transform(df)
+        message = str(excinfo.value)
+        assert 'team_centroid_distance' in message
+        assert 'open_angle_goal' in message
+
+
+# ---------------------------------------------------------------------
+# ShotFilter
+# ---------------------------------------------------------------------
+
+class TestShotFilter:
+    def test_filters_to_shot_rows_only(self):
+        df = pd.DataFrame({'type': ['Pass', 'Shot', 'Carry', 'Shot']})
+        result = ShotFilter().transform(df)
+        assert result['type'].tolist() == ['Shot', 'Shot']
+
+    def test_no_shots_returns_empty_df(self):
+        df = pd.DataFrame({'type': ['Pass', 'Carry']})
+        result = ShotFilter().transform(df)
+        assert result.empty
+
+    def test_all_shots_returns_all_rows_unchanged(self):
+        df = pd.DataFrame({'type': ['Shot', 'Shot']})
+        result = ShotFilter().transform(df)
+        assert len(result) == 2
+
+    def test_preserves_other_columns(self):
+        df = pd.DataFrame({
+            'type': ['Pass', 'Shot'],
+            'ball_x_start': [1.0, 2.0],
+        })
+        result = ShotFilter().transform(df)
+        assert result['ball_x_start'].tolist() == [2.0]
+
+    def test_preserves_index_of_kept_rows(self):
+        df = pd.DataFrame({'type': ['Pass', 'Shot', 'Shot']})
+        result = ShotFilter().transform(df)
+        assert result.index.tolist() == [1, 2]
+
+    def test_does_not_mutate_original_df(self):
+        df = pd.DataFrame({'type': ['Pass', 'Shot']})
+        ShotFilter().transform(df)
+        assert len(df) == 2
+
+    def test_missing_type_column_raises_keyerror(self):
+        df = pd.DataFrame({'not_type': ['Shot']})
+        with pytest.raises(KeyError):
+            ShotFilter().transform(df)

@@ -157,7 +157,5 @@ class ColumnPruner(Transformer):
                 columns = DROP_COLS_POST_FEATURE_ENG
         self.columns = columns
     @override
-    def transform(self, df:pd.DataFrame) -> pd.DataFrame:
-        dropped_cols_df = df.copy()
-        dropped_cols_df=dropped_cols_df.drop(columns=self.columns,errors='ignore')
-        return dropped_cols_df
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        return df.drop(columns=self.columns, errors='ignore')
