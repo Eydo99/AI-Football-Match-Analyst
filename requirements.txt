@@ -5,3 +5,5 @@ numpy>=1.25.0
 pytest
 matplotlib
 seaborn
+xgboost
+scikit-learn >= 1.3.0
