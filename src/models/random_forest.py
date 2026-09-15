@@ -15,22 +15,25 @@ class RandomForestModel(BaseXGModel):
     """Bagged trees baseline. See BaseXGModel for train()/predict_proba()."""
 
     def build_pipeline(self): # this method returns a pipeline that includes the Random Forest classifier   
-        """Build the Random Forest pipeline.
-
-        TODO: confirm whether any preprocessing steps belong here.
-        """
+        model_pipeline = Pipeline([
+            ('model',RandomForestClassifier(
+                class_weight=None, 
+                n_jobs=-1,
+                  random_state=42, 
+                  bootstrap = True,
+                  oob_score = True
+                  ))              
+        ])
+        return model_pipeline 
+        
         
 
     def get_param_grid(self):
-        """Return the hyperparameter grid for GridSearchCV.
-
-        TODO: fill in the values to search over, e.g.
-            'clf__n_estimators': [...],
-            'clf__max_depth': [...],
-            'clf__min_samples_leaf': [...],
-            'clf__max_features': [...],
-        """
         param_grid = {
-            # TODO
+            'model__n_estimators':[200,400,600],
+            'model__max_depth':[4,6,8,None],
+            'model__min_samples_leaf':[1,5,10],
+            'model__max_features':['sqrt','log2']
+            
         }
         return param_grid
