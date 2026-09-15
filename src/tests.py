@@ -1500,7 +1500,7 @@ class TestShotFilter:
 # xgboost model
 # ---------------------------------------------------------------------
 
-class TestXGBoostModel:
+class TestXGBoostXGModel:
     @staticmethod
     def sample():
         from sklearn.datasets import make_classification
@@ -1513,8 +1513,8 @@ class TestXGBoostModel:
     def test_pipeline_contract_and_probability_objective(self):
         from sklearn.pipeline import Pipeline as ModelPipeline
         from xgboost import XGBClassifier
-        from src.models.xgboost_model import XGBoostModel
-        pipeline = XGBoostModel().build_pipeline()
+        from src.models.xg_model.xgboost_model import XGBoostXGModel
+        pipeline = XGBoostXGModel().build_pipeline()
         assert isinstance(pipeline, ModelPipeline)
         assert list(pipeline.named_steps) == ['clf']
         classifier = pipeline.named_steps['clf']
@@ -1527,8 +1527,8 @@ class TestXGBoostModel:
 
     def test_fresh_unfitted_pipeline_and_independent_grid(self):
         from sklearn.exceptions import NotFittedError
-        from src.models.xgboost_model import XGBoostModel
-        model = XGBoostModel()
+        from src.models.xg_model.xgboost_model import XGBoostXGModel
+        model = XGBoostXGModel()
         first, second = model.build_pipeline(), model.build_pipeline()
         first.set_params(clf__max_depth=9)
         assert second.named_steps['clf'].max_depth != 9
@@ -1541,8 +1541,8 @@ class TestXGBoostModel:
     def test_all_grid_candidates_use_supported_parameters(self):
         from sklearn.base import clone
         from sklearn.model_selection import ParameterGrid
-        from src.models.xgboost_model import XGBoostModel
-        model = XGBoostModel()
+        from src.models.xg_model.xgboost_model import XGBoostXGModel
+        model = XGBoostXGModel()
         pipeline = model.build_pipeline()
         grid = model.get_param_grid()
         assert len(list(ParameterGrid(grid))) == 972
@@ -1554,11 +1554,11 @@ class TestXGBoostModel:
             assert 0 < configured.named_steps['clf'].subsample <= 1
 
     def test_fit_predict_with_missing_numeric_data_preserves_input(self):
-        from src.models.xgboost_model import XGBoostModel
+        from src.models.xg_model.xgboost_model import XGBoostXGModel
         X, y = self.sample()
         X.loc[::7, 'a'] = np.nan
         original = X.copy(deep=True)
-        pipeline = XGBoostModel().build_pipeline().set_params(clf__n_estimators=10)
+        pipeline = XGBoostXGModel().build_pipeline().set_params(clf__n_estimators=10)
         pipeline.fit(X, y)
         probabilities = pipeline.predict_proba(X)
         assert probabilities.shape == (len(X), 2)
@@ -1568,18 +1568,18 @@ class TestXGBoostModel:
         pd.testing.assert_frame_equal(X, original)
 
     def test_seed_reproduces_fit(self):
-        from src.models.xgboost_model import XGBoostModel
+        from src.models.xg_model.xgboost_model import XGBoostXGModel
         X, y = self.sample()
-        first = XGBoostModel().build_pipeline().set_params(clf__n_estimators=10)
-        second = XGBoostModel().build_pipeline().set_params(clf__n_estimators=10)
+        first = XGBoostXGModel().build_pipeline().set_params(clf__n_estimators=10)
+        second = XGBoostXGModel().build_pipeline().set_params(clf__n_estimators=10)
         first.fit(X, y)
         second.fit(X, y)
         np.testing.assert_allclose(first.predict_proba(X), second.predict_proba(X))
 
     def test_shared_train_and_prediction_interface(self, monkeypatch):
         from joblib import parallel_backend
-        from src.models.xgboost_model import XGBoostModel
-        model = XGBoostModel()
+        from src.models.xg_model.xgboost_model import XGBoostXGModel
+        model = XGBoostXGModel()
         X, y = self.sample()
         with pytest.raises(RuntimeError, match='train'):
             model.predict_proba(X)
@@ -1598,9 +1598,9 @@ class TestXGBoostModel:
 
     def test_serialized_pipeline_predictions_match(self, tmp_path):
         import joblib
-        from src.models.xgboost_model import XGBoostModel
+        from src.models.xg_model.xgboost_model import XGBoostXGModel
         X, y = self.sample()
-        pipeline = XGBoostModel().build_pipeline().set_params(clf__n_estimators=5)
+        pipeline = XGBoostXGModel().build_pipeline().set_params(clf__n_estimators=5)
         pipeline.fit(X, y)
         path = tmp_path / 'model.joblib'
         joblib.dump(pipeline, path)
