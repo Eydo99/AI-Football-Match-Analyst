@@ -1,76 +1,69 @@
 """
-Shared base class for all xG model wrappers.
+This class knows NOTHING about xG (binary) or event classification
+(multiclass) specifics. It only defines the contract:
 
-Subclasses only need to implement `build_pipeline` and `get_param_grid`;
-`train` and `predict_proba` are shared here so partners don't duplicate
-the GridSearchCV plumbing in every model file.
+    build_pipeline()  -> sklearn Pipeline               (abstract)
+    get_param_grid()  -> dict                            (abstract)
+    train(...)        -> fitted best estimator           (abstract)
+    evaluate(...)      -> dict of metrics                (abstract)
+
+`train` and `evaluate` are abstract here (not shared) because the two
+task families need genuinely different logic:
+  - xG: binary target, plain train_test_split, GridSearchCV, log-loss/
+    ROC-AUC/Brier evaluation.
+  - Event classification: multiclass target, match-grouped split,
+    RandomizedSearchCV, macro-F1/confusion-matrix evaluation.
 """
+
+import pickle
 from abc import ABC, abstractmethod
-from sklearn.model_selection import GridSearchCV, train_test_split
-
-from src.clean_shots import load_X_y
 
 
-class BaseXGModel(ABC):
-    """Common interface every xG model wrapper implements."""
+class BaseModel(ABC):
+    """Common interface every model wrapper in the project implements."""
 
     def __init__(self):
-        self.grid_search = None
+        self.search = None
         self.best_estimator_ = None
         self.X_test = None
         self.y_test = None
 
     @abstractmethod
     def build_pipeline(self):
-        """Return an sklearn Pipeline for this model.
-
-        Implemented per-model in the subclass.
-        """
+        """Return a fresh, unfitted sklearn Pipeline for this model."""
         raise NotImplementedError
 
     @abstractmethod
     def get_param_grid(self):
-        """Return the hyperparameter grid dict for GridSearchCV.
-
-        Implemented per-model in the subclass.
-        """
+        """Return the hyperparameter search space for this model."""
         raise NotImplementedError
 
-    def train(self, X=None, y=None, drop_cols=None, target_col=None,
-              path=None, scoring='neg_log_loss', cv=5, test_size=0.25):
-        """Run GridSearchCV over this model's pipeline and store the result.
+    @abstractmethod
+    def train(self, X=None, y=None, **kwargs):
+        """Fit the search over build_pipeline()/get_param_grid() and store the result."""
+        raise NotImplementedError
 
-        Shared logic - no TODO here, this should work as-is once a
-        subclass fills in build_pipeline() and get_param_grid().
-        """
-        if X is None or y is None:
-            if target_col is None:
-                raise ValueError(
-                    "Either pass X and y directly, or pass "
-                    "drop_cols and target_col so train() can load the data itself."
-                )
-            X, y = load_X_y(drop_cols=drop_cols or [], target_col=target_col, path=path)
+    @abstractmethod
+    def get_evaluator(self):
+        """Return this family's BaseEvaluator instance (XGEvaluator, EventEvaluator, ...)."""
+        raise NotImplementedError
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=42, stratify=y
-        )
-        self.X_test, self.y_test = X_test, y_test
+    def evaluate(self, plot: bool = True) -> dict:
+        return self.get_evaluator().evaluate(self, self.__class__.__name__, plot=plot)
 
-        pipeline = self.build_pipeline()
-        param_grid = self.get_param_grid()
-        self.grid_search = GridSearchCV(
-            pipeline, param_grid, scoring=scoring, cv=cv, n_jobs=-1
-        )
-        self.grid_search.fit(X_train, y_train)
-        self.best_estimator_ = self.grid_search.best_estimator_
-        return self.best_estimator_
 
-    def predict_proba(self, X):
-        """Return predicted goal probabilities for X.
-
-        Shared logic - no TODO here. Requires train() to have been
-        called first.
-        """
+    def predict(self, X):
         if self.best_estimator_ is None:
-            raise RuntimeError("Call train() before predict_proba().")
-        return self.best_estimator_.predict_proba(X)[:, 1]
+            raise RuntimeError("Call train() before predict().")
+        return self.best_estimator_.predict(X)
+
+    def save(self, path: str) -> None:
+        if self.best_estimator_ is None:
+            raise RuntimeError("Call train() before save().")
+        with open(path, "wb") as f:
+            pickle.dump(self.best_estimator_, f)
+
+    def load(self, path: str) -> None:
+        """Load a previously-trained estimator, skipping train() entirely."""
+        with open(path, "rb") as f:
+            self.best_estimator_ = pickle.load(f)

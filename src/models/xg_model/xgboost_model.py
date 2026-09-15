@@ -2,16 +2,13 @@
 from xgboost import XGBClassifier
 from sklearn.pipeline import Pipeline
 
-from src.models.base_model import BaseXGModel
+from src.models.xg_model.xg_base_model import XGBaseModel
 
 
-class XGBoostModel(BaseXGModel):
-    """use the shared training and prediction methods with boosted trees."""
+class XGBoostXGModel(XGBaseModel):
+    """Uses the shared training and prediction methods with boosted trees."""
 
     def build_pipeline(self):
-        """return a fresh, unfitted pipeline for numeric shot features."""
-        # trees do not need scaling, and xgboost handles missing numeric values.
-        # keep one worker here because the shared grid search runs fits in parallel.
         classifier = XGBClassifier(
             objective="binary:logistic",
             eval_metric="logloss",
@@ -20,13 +17,9 @@ class XGBoostModel(BaseXGModel):
             n_jobs=1,
             scale_pos_weight=1,
         )
-        # the step name must match the clf__ prefix in the parameter grid.
         return Pipeline([("clf", classifier)])
 
     def get_param_grid(self):
-        """return the six-parameter search grid specified in the team guide."""
-        # keep the grid focused on probability quality and the guide's ranges.
-        # do not rebalance goals; xg needs probabilities at the observed base rate.
         return {
             "clf__n_estimators": [200, 300, 500],
             "clf__max_depth": [3, 4, 5],
