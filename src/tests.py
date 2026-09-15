@@ -1494,3 +1494,116 @@ class TestShotFilter:
         df = pd.DataFrame({'not_type': ['Shot']})
         with pytest.raises(KeyError):
             ShotFilter().transform(df)
+
+
+# ---------------------------------------------------------------------
+# xgboost model
+# ---------------------------------------------------------------------
+
+class TestXGBoostModel:
+    @staticmethod
+    def sample():
+        from sklearn.datasets import make_classification
+        X, y = make_classification(
+            n_samples=100, n_features=5, n_informative=3,
+            weights=[0.8, 0.2], random_state=42,
+        )
+        return pd.DataFrame(X, columns=list('abcde')), pd.Series(y)
+
+    def test_pipeline_contract_and_probability_objective(self):
+        from sklearn.pipeline import Pipeline as ModelPipeline
+        from xgboost import XGBClassifier
+        from src.models.xgboost_model import XGBoostModel
+        pipeline = XGBoostModel().build_pipeline()
+        assert isinstance(pipeline, ModelPipeline)
+        assert list(pipeline.named_steps) == ['clf']
+        classifier = pipeline.named_steps['clf']
+        assert isinstance(classifier, XGBClassifier)
+        assert classifier.objective == 'binary:logistic'
+        assert classifier.eval_metric == 'logloss'
+        assert classifier.scale_pos_weight == 1
+        assert classifier.n_jobs == 1
+        assert classifier.random_state == 42
+
+    def test_fresh_unfitted_pipeline_and_independent_grid(self):
+        from sklearn.exceptions import NotFittedError
+        from src.models.xgboost_model import XGBoostModel
+        model = XGBoostModel()
+        first, second = model.build_pipeline(), model.build_pipeline()
+        first.set_params(clf__max_depth=9)
+        assert second.named_steps['clf'].max_depth != 9
+        with pytest.raises(NotFittedError):
+            second.predict_proba(self.sample()[0])
+        grid = model.get_param_grid()
+        grid['clf__max_depth'].append(99)
+        assert 99 not in model.get_param_grid()['clf__max_depth']
+
+    def test_all_grid_candidates_use_supported_parameters(self):
+        from sklearn.base import clone
+        from sklearn.model_selection import ParameterGrid
+        from src.models.xgboost_model import XGBoostModel
+        model = XGBoostModel()
+        pipeline = model.build_pipeline()
+        grid = model.get_param_grid()
+        assert len(list(ParameterGrid(grid))) == 972
+        assert all(name.startswith('clf__') for name in grid)
+        assert 'clf__scale_pos_weight' not in grid
+        for candidate in ParameterGrid(grid):
+            configured = clone(pipeline).set_params(**candidate)
+            assert configured.named_steps['clf'].max_depth > 0
+            assert 0 < configured.named_steps['clf'].subsample <= 1
+
+    def test_fit_predict_with_missing_numeric_data_preserves_input(self):
+        from src.models.xgboost_model import XGBoostModel
+        X, y = self.sample()
+        X.loc[::7, 'a'] = np.nan
+        original = X.copy(deep=True)
+        pipeline = XGBoostModel().build_pipeline().set_params(clf__n_estimators=10)
+        pipeline.fit(X, y)
+        probabilities = pipeline.predict_proba(X)
+        assert probabilities.shape == (len(X), 2)
+        assert np.isfinite(probabilities).all()
+        assert ((probabilities >= 0) & (probabilities <= 1)).all()
+        np.testing.assert_allclose(probabilities.sum(axis=1), 1, atol=1e-6)
+        pd.testing.assert_frame_equal(X, original)
+
+    def test_seed_reproduces_fit(self):
+        from src.models.xgboost_model import XGBoostModel
+        X, y = self.sample()
+        first = XGBoostModel().build_pipeline().set_params(clf__n_estimators=10)
+        second = XGBoostModel().build_pipeline().set_params(clf__n_estimators=10)
+        first.fit(X, y)
+        second.fit(X, y)
+        np.testing.assert_allclose(first.predict_proba(X), second.predict_proba(X))
+
+    def test_shared_train_and_prediction_interface(self, monkeypatch):
+        from joblib import parallel_backend
+        from src.models.xgboost_model import XGBoostModel
+        model = XGBoostModel()
+        X, y = self.sample()
+        with pytest.raises(RuntimeError, match='train'):
+            model.predict_proba(X)
+        # keep this integration test small while exercising the real base trainer.
+        monkeypatch.setattr(model, 'get_param_grid', lambda: {
+            'clf__n_estimators': [5, 10], 'clf__max_depth': [2],
+        })
+        with parallel_backend('threading', n_jobs=2):
+            best = model.train(X=X, y=y, cv=2)
+        assert best is model.best_estimator_
+        assert model.grid_search.scoring == 'neg_log_loss'
+        assert len(model.X_test) == 25
+        predictions = model.predict_proba(model.X_test)
+        assert predictions.shape == (25,)
+        np.testing.assert_allclose(predictions, best.predict_proba(model.X_test)[:, 1])
+
+    def test_serialized_pipeline_predictions_match(self, tmp_path):
+        import joblib
+        from src.models.xgboost_model import XGBoostModel
+        X, y = self.sample()
+        pipeline = XGBoostModel().build_pipeline().set_params(clf__n_estimators=5)
+        pipeline.fit(X, y)
+        path = tmp_path / 'model.joblib'
+        joblib.dump(pipeline, path)
+        np.testing.assert_allclose(
+            pipeline.predict_proba(X), joblib.load(path).predict_proba(X)
+        )
