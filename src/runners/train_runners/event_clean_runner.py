@@ -7,11 +7,8 @@ from src.features.transformers.cleaning.column_pruner import ColumnPruner
 from src.features.transformers.cleaning.ball_speed_imputer import BallSpeedImputer
 from src.features.transformers.cleaning.trajectory_imputer import TrajectoryImputer
 from src.features.transformers.cleaning.na_dropper import NaDropper
-from src.runners.base_runner import BaseRunner
+from src.runners.base_runner import BaseRunner,PROJECT_ROOT
 from src.features.transformers.cleaning.target_encoder import EventClassEncoder
-
-
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Cols only known for shot rows (need the freeze frame, which only shots have).
 SHOT_ONLY_COLS = ['team_centroid_distance', 'dist_nearest_defender', 'open_angle_goal']

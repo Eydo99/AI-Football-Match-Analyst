@@ -3,9 +3,9 @@ import warnings
 import pandas as pd
 from statsbombpy import sb
 from statsbombpy.api_client import NoAuthWarning
+from src.runners.base_runner import PROJECT_ROOT
 
 warnings.simplefilter('ignore', category=NoAuthWarning)
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def fetch_and_save_data(output_dir=None):
 

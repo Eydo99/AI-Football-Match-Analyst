@@ -4,9 +4,8 @@ from src.features.pipeline import Pipeline
 from src.features.transformers.cleaning.shot_filter import ShotFilter
 from src.features.transformers.cleaning.opponent_data_dropper import OpponentDataDropper
 from src.features.transformers.cleaning.ball_speed_imputer import BallSpeedImputer
-from src.runners.base_runner import BaseRunner
+from src.runners.base_runner import BaseRunner,PROJECT_ROOT
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class ShotCleaningRunner(BaseRunner):

@@ -5,10 +5,8 @@ from src.features.transformers.cleaning.column_pruner import ColumnPruner
 from src.features.transformers.cleaning.shot_filter import ShotFilter
 from src.features.transformers.cleaning.opponent_data_dropper import OpponentDataDropper
 from src.features.transformers.cleaning.ball_speed_imputer import BallSpeedImputer
-from src.runners.base_runner import BaseRunner
+from src.runners.base_runner import BaseRunner,PROJECT_ROOT
 from src.runners.train_runners.event_clean_runner import EventCleaningRunner
-
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 events_df = EventCleaningRunner().load_output()
 SHOT_BALL_SPEED_FALLBACK_MEDIAN =  events_df[events_df['event_class'] == 4]['ball_speed'].median()

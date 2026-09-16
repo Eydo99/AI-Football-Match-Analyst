@@ -15,9 +15,8 @@ from src.features.transformers.cleaning.location_splitter import LocationSplitte
 from src.features.transformers.cleaning.coordinate_rescaler import CoordinateRescaler
 from src.features.transformers.cleaning.time_parser import TimeParser
 from src.features.transformers.cleaning.freeze_frame_extractor import FreezeFrameExtractor
-from src.runners.base_runner import BaseRunner
+from src.runners.base_runner import BaseRunner,PROJECT_ROOT
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 REQUIRED_EVENT_TYPES = ['Pass', 'Pressure', 'Foul Won', 'Shot', 'Goal Keeper', 'Foul Committed', 'Carry']
 

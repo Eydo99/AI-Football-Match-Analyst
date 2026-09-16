@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 
 import pandas as pd
 
-
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 class BaseRunner(ABC):
 
     def __init__(self, input_path: str, output_path: str, missing_input_hint: str = ""):

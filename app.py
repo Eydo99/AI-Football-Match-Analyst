@@ -44,6 +44,7 @@ MODEL_PATH = Path(__file__).resolve().parent / "src" / "models" / "saved_models"
 EVENT_MODEL_PATH = Path(__file__).resolve().parent / "src" / "models" / "saved_models" / "best_event_model.pkl"
 DROP_COLS = ['match_id', 'team', 'type', 'ball_x_start', 'ball_y_start']
 TARGET_COL = 'ends_in_goal'
+DRAW_XG_THRESHOLD = 0.3
 
 st.set_page_config(page_title="Match xG Explorer", layout="wide")
 
@@ -141,7 +142,8 @@ def cached_fetch_and_process(match_id: int):
     # pattern as every other runner here), so the merged predicted-type
     # events have to be written to exactly the path it expects first.
     shot_runner = MatchShotCleanRunner(match_id)
-    shot_runner.input_path.parent.mkdir(parents=True, exist_ok=True)
+    import os
+    os.makedirs(os.path.dirname(shot_runner.input_path),exist_ok=True)
     match_events_df.to_parquet(shot_runner.input_path, index=False)
     shot_features_df = shot_runner.run()  # reads the file just written
 
@@ -269,12 +271,12 @@ if len(team_summary) == 2:
     t1, t2 = team_summary.iloc[0], team_summary.iloc[1]
     xg_diff = t1['total_xg'] - t2['total_xg']
 
-    if xg_diff > 0:
+    if abs(xg_diff) <= DRAW_XG_THRESHOLD:
+        predicted_winner = None  # draw
+    elif xg_diff > 0:
         predicted_winner = t1['team']
-    elif xg_diff < 0:
-        predicted_winner = t2['team']
     else:
-        predicted_winner = None
+        predicted_winner = t2['team']
 
     actual_diff = t1['actual_goals'] - t2['actual_goals']
     if actual_diff > 0:

@@ -17,9 +17,8 @@ from src.features.transformers.features.trajectory_features import TrajectoryLen
 from src.features.transformers.features.pressure_features import DistNearestDefender, DefendersIn3m
 from src.features.transformers.features.motion_features import BallSpeed
 from src.features.transformers.features.full_tier_features import TeamCentroidDistance, OpenAngleGoal
-from src.runners.base_runner import BaseRunner
+from src.runners.base_runner import BaseRunner,PROJECT_ROOT
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 

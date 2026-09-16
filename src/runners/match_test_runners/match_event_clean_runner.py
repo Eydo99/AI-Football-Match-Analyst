@@ -6,12 +6,10 @@ from src.features.transformers.cleaning.column_pruner import ColumnPruner
 from src.features.transformers.cleaning.ball_speed_imputer import BallSpeedImputer
 from src.features.transformers.cleaning.trajectory_imputer import TrajectoryImputer
 from src.features.transformers.cleaning.na_dropper import NaDropper
-from src.runners.base_runner import BaseRunner
+from src.runners.base_runner import BaseRunner,PROJECT_ROOT
 
 from src.runners.train_runners.event_clean_runner import SHOT_ONLY_COLS, POST_CLASS_DROP_COLS, CORE_GEOMETRIC_COLS, \
     EventCleaningRunner
-
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 EVENT_CLEAN_COLUMN_DROPPED = SHOT_ONLY_COLS + ['player', 'minute', 'second']
 BALL_SPEED_FALLBACK_MEDIAN = EventCleaningRunner().load_output()['ball_speed'].median()
