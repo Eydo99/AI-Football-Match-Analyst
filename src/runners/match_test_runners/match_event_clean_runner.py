@@ -8,7 +8,7 @@ from src.features.transformers.cleaning.trajectory_imputer import TrajectoryImpu
 from src.features.transformers.cleaning.na_dropper import NaDropper
 from src.runners.base_runner import BaseRunner
 
-from src.runners.event_clean_runner import SHOT_ONLY_COLS, POST_CLASS_DROP_COLS, CORE_GEOMETRIC_COLS, \
+from src.runners.train_runners.event_clean_runner import SHOT_ONLY_COLS, POST_CLASS_DROP_COLS, CORE_GEOMETRIC_COLS, \
     EventCleaningRunner
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

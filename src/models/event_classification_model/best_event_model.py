@@ -1,7 +1,7 @@
 import os
 import pickle
 
-from src.runners.event_clean_runner import EventCleaningRunner
+from src.runners.train_runners.event_clean_runner import EventCleaningRunner
 from src.models.event_classification_model import XGBoostEventModel
 from src.models.evaluation import EventEvaluator
 

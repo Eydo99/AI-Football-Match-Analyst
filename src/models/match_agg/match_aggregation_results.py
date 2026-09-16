@@ -1,6 +1,6 @@
 from src.models.match_agg.match_aggregation import aggregate_match_xg, build_match_comparison, summarize_win_prediction_accuracy , add_draw_band
 from src.models.xg_model.xgboost_model import XGBoostXGModel
-from src.runners.shot_clean_runner import ShotCleaningRunner
+from src.runners.train_runners.shot_clean_runner import ShotCleaningRunner
 from pathlib import Path
 import numpy as np
 import pandas as pd

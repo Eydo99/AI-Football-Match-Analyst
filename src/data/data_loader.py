@@ -19,9 +19,8 @@ from typing import Callable, Optional
 
 import pandas as pd
 
-from src.runners.feature_build_runner import FeatureBuildRunner
-from src.runners.shot_clean_runner import ShotCleaningRunner
-from src.runners.event_clean_runner import EventCleaningRunner
+from src.runners.train_runners.shot_clean_runner import ShotCleaningRunner
+from src.runners.train_runners.event_clean_runner import EventCleaningRunner
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PROCESSED_DIR = os.path.join(PROJECT_ROOT, 'data', 'processed')

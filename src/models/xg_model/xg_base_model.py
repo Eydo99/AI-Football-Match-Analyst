@@ -8,7 +8,7 @@ only implement build_pipeline() and get_param_grid().
 """
 from sklearn.model_selection import GridSearchCV, train_test_split
 
-from src.runners.shot_clean_runner import ShotCleaningRunner
+from src.runners.train_runners.shot_clean_runner import ShotCleaningRunner
 from src.models.base_model import BaseModel
 
 

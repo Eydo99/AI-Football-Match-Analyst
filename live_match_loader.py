@@ -1,6 +1,6 @@
 """
 Browse StatsBomb competitions/seasons/matches that were NOT part of
-training (see loader.py's comp_dict: La Liga=11, World Cup=43,
+training (see data_loader.py's comp_dict: La Liga=11, World Cup=43,
 Champions League=16), and build engineered features for a single
 selected match on demand - no pre-processed parquet needed.
 
@@ -49,7 +49,7 @@ from src.features.transformers.cleaning.shot_filter import ShotFilter
 warnings.simplefilter('ignore', category=NoAuthWarning)
 
 # Exactly which (competition_id, season_id) pairs were used for training,
-# taken from loader.py's comp_dict. A competition can have some seasons
+# taken from data_loader.py's comp_dict. A competition can have some seasons
 # trained on and others not - so we exclude by pair, not by whole
 # competition_id, otherwise every untrained season of La Liga / World Cup /
 # Champions League would be hidden from the live browser for no reason.
