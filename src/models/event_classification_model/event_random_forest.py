@@ -8,7 +8,7 @@ class RandomForestEventModel(EventClassificationBaseModel):
         pipeline_rf = Pipeline([
             ('clf', RandomForestClassifier(
                 class_weight='balanced_subsample',
-                n_jobs=-1,
+                n_jobs=12,
                 random_state=42))
         ])
         return pipeline_rf 

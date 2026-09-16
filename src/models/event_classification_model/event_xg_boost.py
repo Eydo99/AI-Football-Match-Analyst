@@ -7,7 +7,7 @@ from sklearn.utils.class_weight import compute_sample_weight
 class XGBoostEventModel(EventClassificationBaseModel):
     def build_pipeline(self):
         pipeline_xgb = Pipeline([
-            ('clf',XGBClassifier(objective='multi:softprob' , num_class=5 , eval_metric='mlogloss' , tree_method='hist' , random_state=42))
+            ('clf',XGBClassifier(objective='multi:softprob' , num_class=5 , eval_metric='mlogloss' , tree_method='hist' , random_state=42,n_jobs=6,device='cuda'))
 
         ])
         return pipeline_xgb
