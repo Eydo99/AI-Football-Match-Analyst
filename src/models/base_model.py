@@ -17,6 +17,7 @@ task families need genuinely different logic:
 
 import pickle
 from abc import ABC, abstractmethod
+import os
 
 
 class BaseModel(ABC):
@@ -60,6 +61,7 @@ class BaseModel(ABC):
     def save(self, path: str) -> None:
         if self.best_estimator_ is None:
             raise RuntimeError("Call train() before save().")
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "wb") as f:
             pickle.dump(self.best_estimator_, f)
 
