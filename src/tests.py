@@ -1545,7 +1545,7 @@ class TestXGBoostXGModel:
         model = XGBoostXGModel()
         pipeline = model.build_pipeline()
         grid = model.get_param_grid()
-        assert len(list(ParameterGrid(grid))) == 972
+        assert len(list(ParameterGrid(grid))) == 729
         assert all(name.startswith('clf__') for name in grid)
         assert 'clf__scale_pos_weight' not in grid
         for candidate in ParameterGrid(grid):
@@ -1590,7 +1590,7 @@ class TestXGBoostXGModel:
         with parallel_backend('threading', n_jobs=2):
             best = model.train(X=X, y=y, cv=2)
         assert best is model.best_estimator_
-        assert model.grid_search.scoring == 'neg_log_loss'
+        assert model.search.scoring == 'neg_log_loss'
         assert len(model.X_test) == 25
         predictions = model.predict_proba(model.X_test)
         assert predictions.shape == (25,)
@@ -1607,3 +1607,106 @@ class TestXGBoostXGModel:
         np.testing.assert_allclose(
             pipeline.predict_proba(X), joblib.load(path).predict_proba(X)
         )
+
+
+class TestLogisticRegressionEventModel:
+    @staticmethod
+    def sample():
+        from sklearn.datasets import make_classification
+        X, y = make_classification(n_samples=250, n_features=8, n_informative=6,
+                                   n_classes=5, n_clusters_per_class=1, random_state=42)
+        names = np.array(['Carry', 'Foul', 'Other', 'Pass', 'Shot'])
+        return pd.DataFrame(X), pd.Series(names[y]), pd.Series(np.repeat(np.arange(25), 10))
+
+    def test_pipeline_and_search_contract(self):
+        from sklearn.model_selection import ParameterGrid
+        from sklearn.preprocessing import StandardScaler
+        from src.models.event_classification_model.event_logistic_regression import LogisticRegressionEventModel
+        model = LogisticRegressionEventModel()
+        pipeline = model.build_pipeline()
+        assert isinstance(pipeline.named_steps['scaler'], StandardScaler)
+        clf = pipeline.named_steps['clf']
+        assert clf.class_weight == 'balanced'
+        assert clf.solver == 'lbfgs'
+        assert clf.max_iter == 2000
+        assert clf.random_state == 42
+        grid = model.get_param_grid()
+        assert grid['clf__C'] == [0.001, 0.01, 0.1, 1, 10, 100]
+        assert len(list(ParameterGrid(grid))) == 6
+        for params in ParameterGrid(grid):
+            model.build_pipeline().set_params(**params)
+
+    def test_fresh_objects_and_unfitted_errors(self):
+        from sklearn.exceptions import NotFittedError
+        from src.models.event_classification_model.event_logistic_regression import LogisticRegressionEventModel
+        model = LogisticRegressionEventModel()
+        X, _, _ = self.sample()
+        with pytest.raises(NotFittedError):
+            model.build_pipeline().predict(X)
+        for method in [model.predict, model.predict_proba]:
+            with pytest.raises(RuntimeError, match='train'):
+                method(X)
+        with pytest.raises(RuntimeError, match='train'):
+            model.evaluate(plot=False)
+        first = model.build_pipeline().set_params(clf__C=100)
+        assert model.build_pipeline().named_steps['clf'].C == 1
+        grid = model.get_param_grid()
+        grid['clf__C'].append(999)
+        assert 999 not in model.get_param_grid()['clf__C']
+
+    def test_speed_fill_cannot_reveal_label_or_mutate_input(self):
+        from src.models.event_classification_model.event_logistic_regression import _neutralize_missing_speed
+        X = pd.DataFrame({'ball_speed': [2.5, 10.9, 3.0], 'ball_speed_missing': [1, 1, 0]})
+        original = X.copy(deep=True)
+        safe = _neutralize_missing_speed(X)
+        assert safe.ball_speed.tolist() == [0.0, 0.0, 3.0]
+        pd.testing.assert_frame_equal(X, original)
+        with pytest.raises(ValueError, match='indicator'):
+            _neutralize_missing_speed(X.drop(columns='ball_speed_missing'))
+        with pytest.raises(TypeError, match='dataframe'):
+            _neutralize_missing_speed(X.to_numpy())
+        with pytest.raises(ValueError, match='target'):
+            _neutralize_missing_speed(X.assign(match_id=1))
+
+    def test_multiclass_probabilities_and_serialization(self, tmp_path):
+        from src.models.event_classification_model.event_logistic_regression import LogisticRegressionEventModel
+        X, y, _ = self.sample()
+        original = X.copy(deep=True)
+        model = LogisticRegressionEventModel()
+        model.best_estimator_ = model.build_pipeline().fit(X, y)
+        p = model.predict_proba(X)
+        assert p.shape == (250, 5)
+        assert np.isfinite(p).all() and ((p >= 0) & (p <= 1)).all()
+        np.testing.assert_allclose(p.sum(axis=1), 1)
+        np.testing.assert_array_equal(model.predict(X), model.best_estimator_.classes_[p.argmax(axis=1)])
+        pd.testing.assert_frame_equal(X, original)
+        model.save(tmp_path / 'event.pkl')
+        loaded = LogisticRegressionEventModel()
+        loaded.load(tmp_path / 'event.pkl')
+        np.testing.assert_allclose(loaded.predict_proba(X), p)
+
+    def test_shared_grouped_training_scaler_and_evaluator(self):
+        from joblib import parallel_backend
+        from sklearn.model_selection import GroupShuffleSplit
+        from src.models.event_classification_model.event_logistic_regression import LogisticRegressionEventModel
+        X, y, groups = self.sample()
+        model = LogisticRegressionEventModel()
+        with parallel_backend('threading', n_jobs=1):
+            model.train(X, y, groups, n_iter=6, n_splits=2)
+        train, test = next(GroupShuffleSplit(test_size=.2, random_state=42).split(X, y, groups))
+        assert set(groups.iloc[train]).isdisjoint(model.groups_test)
+        pd.testing.assert_frame_equal(model.X_test, X.iloc[test])
+        np.testing.assert_allclose(model.best_estimator_.named_steps['scaler'].mean_, X.iloc[train].mean())
+        for a, b in model.search.cv.split(X.iloc[train], y.iloc[train], groups.iloc[train]):
+            assert set(groups.iloc[train].iloc[a]).isdisjoint(groups.iloc[train].iloc[b])
+        assert model.search.scoring == 'f1_macro'
+        assert len(model.search.cv_results_['params']) == 6
+        result = model.evaluate(plot=False)
+        assert 0 <= result['macro_f1'] <= 1
+        assert result['confusion_matrix'].shape == (5, 5)
+
+    def test_public_model_imports_remain_compatible(self):
+        from src.models import LogisticRegressionModel, RandomForestModel, XGBoostModel
+        assert LogisticRegressionModel.__name__ == 'LogisticRegressionXGModel'
+        assert RandomForestModel.__name__ == 'RandomForestXGModel'
+        assert XGBoostModel.__name__ == 'XGBoostXGModel'
