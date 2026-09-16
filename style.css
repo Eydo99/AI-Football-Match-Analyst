@@ -1,0 +1,231 @@
+/* ---------------------------------------------------------------------
+   style.css — Match xG Explorer
+   Design direction: broadcast match-day analytics graphics — a pitch-
+   under-floodlights backdrop, chalk-white type, and one broadcast-gold
+   accent reserved for the number that matters most (Total xG) and the
+   "predicted winner" cue. Injected into app.py via
+   st.markdown(..., unsafe_allow_html=True).
+   --------------------------------------------------------------------- */
+
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+:root {
+    --pitch-ink: #0B1712;
+    --turf: #142219;
+    --turf-raised: #1A2B20;
+    --chalk: #F1F5F0;
+    --chalk-dim: #93A69B;
+    --gold: #C99A2E;
+    --gold-dim: rgba(201, 154, 46, 0.35);
+    --win-green: #2F9E64;
+    --hairline: rgba(147, 166, 155, 0.18);
+}
+
+/* Hide Streamlit chrome we don't want, WITHOUT hiding the sidebar's own
+   collapse/expand control - it lives inside <header> in current
+   Streamlit builds, so hiding the whole header takes the toggle with
+   it. Hide the toolbar contents (menu/Deploy) instead. */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+/* [data-testid="stToolbar"] {visibility: hidden;} */
+header {background: transparent;}
+
+/* Page background + base font */
+.stApp {
+    background: var(--pitch-ink);
+    font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+    color: var(--chalk);
+}
+
+::selection {
+    background: var(--gold-dim);
+    color: var(--chalk);
+}
+
+/* ---------------------------------------------------------------------
+   Hero
+   --------------------------------------------------------------------- */
+
+h1 {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--chalk);
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: 0.9rem;
+}
+
+[data-testid="stCaptionContainer"] {
+    color: var(--chalk-dim);
+    font-size: 0.95rem;
+}
+
+h2, h3 {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: var(--chalk);
+}
+
+h3 {
+    font-size: 1.3rem;
+    margin-bottom: 0.75rem;
+}
+
+/* ---------------------------------------------------------------------
+   Metric cards (st.metric)
+   --------------------------------------------------------------------- */
+
+[data-testid="stMetric"] {
+    background: var(--turf);
+    border: 1px solid var(--hairline);
+    border-left: 2px solid var(--hairline);
+    border-radius: 3px;
+    padding: 14px 16px;
+}
+
+[data-testid="stMetricLabel"] {
+    color: var(--chalk-dim);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+[data-testid="stMetricValue"] {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--chalk);
+    font-weight: 600;
+}
+
+/* Total xG is the headline number of this app - it's always the 3rd of
+   the 3 metric columns per team (Shots, Actual goals, Total xG), so
+   this depends on that order/count staying as it is in app.py. Give it
+   the one gold accent the rest of the page stays quiet around. */
+[data-testid="stHorizontalBlock"] > div:nth-child(3) [data-testid="stMetric"] {
+    background: var(--turf-raised);
+    border-left: 2px solid var(--gold);
+}
+[data-testid="stHorizontalBlock"] > div:nth-child(3) [data-testid="stMetricValue"] {
+    color: var(--gold);
+}
+
+/* ---------------------------------------------------------------------
+   Result banners
+   --------------------------------------------------------------------- */
+
+.winner-banner,
+.draw-banner {
+    background: var(--turf);
+    border-radius: 3px;
+    padding: 13px 20px;
+    color: var(--chalk);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 0.85rem;
+}
+
+.winner-banner { border-left: 3px solid var(--win-green); }
+.draw-banner { border-left: 3px solid var(--gold); }
+
+.winner-banner b,
+.draw-banner b {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+/* ---------------------------------------------------------------------
+   Dataframes / tables
+   --------------------------------------------------------------------- */
+
+[data-testid="stDataFrame"] {
+    border: 1px solid var(--hairline);
+    border-radius: 3px;
+    overflow: hidden;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+[data-testid="stDataFrame"] div[role="columnheader"] {
+    background: var(--turf-raised);
+    color: var(--chalk-dim);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 500;
+}
+
+/* ---------------------------------------------------------------------
+   Sidebar
+   --------------------------------------------------------------------- */
+
+[data-testid="stSidebar"] {
+    background: var(--turf);
+    border-right: 1px solid var(--hairline);
+}
+
+[data-testid="stSidebar"] h2 {
+    font-size: 1.05rem;
+    color: var(--chalk);
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 0.4rem;
+    margin-top: 1.4rem;
+    margin-bottom: 0.8rem;
+}
+
+[data-testid="stSelectbox"] label {
+    color: var(--chalk-dim);
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+/* These two rely on BaseWeb's current internal markup for st.selectbox
+   and may need a small selector tweak after a Streamlit version bump. */
+[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+    background: var(--pitch-ink);
+    border-color: var(--hairline);
+    border-radius: 3px;
+}
+[data-testid="stSelectbox"] div[data-baseweb="select"]:focus-within > div {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 1px var(--gold);
+}
+
+/* ---------------------------------------------------------------------
+   Buttons
+   --------------------------------------------------------------------- */
+
+.stButton > button {
+    background: var(--gold);
+    color: var(--pitch-ink);
+    border: none;
+    border-radius: 3px;
+    padding: 0.5rem 1.2rem;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    transition: background-color 0.15s ease;
+}
+.stButton > button:hover {
+    background: #B78C29;
+}
+
+/* ---------------------------------------------------------------------
+   Dividers, focus, motion, small screens
+   --------------------------------------------------------------------- */
+
+hr { border-color: var(--hairline); }
+
+:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+}
+
+@media (max-width: 640px) {
+    h1 { font-size: 1.6rem; }
+    [data-testid="stMetric"] { padding: 10px 12px; }
+}
