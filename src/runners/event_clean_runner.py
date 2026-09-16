@@ -8,6 +8,8 @@ from src.features.transformers.cleaning.ball_speed_imputer import BallSpeedImput
 from src.features.transformers.cleaning.trajectory_imputer import TrajectoryImputer
 from src.features.transformers.cleaning.na_dropper import NaDropper
 from src.runners.base_runner import BaseRunner
+from src.features.transformers.cleaning.target_encoder import EventClassEncoder
+
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -36,6 +38,7 @@ class EventCleaningRunner(BaseRunner):
     def build_pipeline(self) -> Pipeline:
         return Pipeline([
             EventClassMapper(),
+            EventClassEncoder(),
             DuplicateDropper(),
             ColumnPruner(columns=SHOT_ONLY_COLS),
             BallSpeedImputer(column='ball_speed', group='event_class'),

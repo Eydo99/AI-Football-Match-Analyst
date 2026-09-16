@@ -12,7 +12,8 @@ class EventClassificationBaseModel(BaseModel):
         self.groups_test = None
 
     def train(self, X=None, y=None, groups=None, n_iter=25,
-              scoring='f1_macro', n_splits=5, test_size=0.2, n_jobs=-1):
+              scoring='f1_macro', n_splits=5, test_size=0.2, n_jobs=-1,
+              subsample_fn=None):
 
         if X is None or y is None or groups is None:
             raise ValueError("train() requires X, y, and groups (match_id) for event classification.")
@@ -21,8 +22,12 @@ class EventClassificationBaseModel(BaseModel):
         train_idx, test_idx = next(gss.split(X, y, groups=groups))
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
         y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+        groups_train = groups.iloc[train_idx]
         self.X_test, self.y_test = X_test, y_test
         self.groups_test = groups.iloc[test_idx]
+
+        if subsample_fn is not None:
+            X_train, y_train, groups_train = subsample_fn(X_train, y_train, groups_train)
 
         cv = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=42)
 
@@ -34,7 +39,7 @@ class EventClassificationBaseModel(BaseModel):
             pipeline, param_distributions, n_iter=n_iter,
             scoring=scoring, cv=cv, n_jobs=n_jobs, random_state=42,
         )
-        self.search.fit(X_train, y_train, groups=groups.iloc[train_idx], **fit_params)
+        self.search.fit(X_train, y_train, groups=groups_train, **fit_params)
         self.best_estimator_ = self.search.best_estimator_
         return self.best_estimator_
 

@@ -1,7 +1,10 @@
 import numpy as np
 from sklearn.metrics import classification_report, confusion_matrix, f1_score, log_loss
 
+from src.features.transformers.cleaning.target_encoder import EVENT_CLASS_MAPPING
 from src.models.evaluation.base_evaluator import BaseEvaluator
+
+INV_EVENT_CLASS_MAPPING = {v: k for k, v in EVENT_CLASS_MAPPING.items()}
 
 
 class EventEvaluator(BaseEvaluator):
@@ -12,6 +15,7 @@ class EventEvaluator(BaseEvaluator):
         y_pred = model.best_estimator_.predict(model.X_test)
         y_proba = model.predict_proba(model.X_test)
         labels = model.best_estimator_.classes_
+        target_names = [INV_EVENT_CLASS_MAPPING[label] for label in labels]
 
         return {
             'model': model_name,
@@ -19,7 +23,9 @@ class EventEvaluator(BaseEvaluator):
             'weighted_f1': f1_score(y_true, y_pred, average='weighted'),
             'log_loss': log_loss(y_true, y_proba, labels=labels),
             'best_params': model.search.best_params_,
-            'classification_report': classification_report(y_true, y_pred, digits=3),
+            'classification_report': classification_report(
+                y_true, y_pred, labels=labels, target_names=target_names, digits=3
+            ),
             'confusion_matrix': np.round(
                 confusion_matrix(y_true, y_pred, labels=labels, normalize='true'), 2
             ),
