@@ -7,22 +7,6 @@ from src.features.base import Transformer
 
 
 class BallSpeed(Transformer):
-    """estimate event-to-event movement in metres per second.
-
-    default groups are match_id and period because timestamps reset each period.
-    custom group_col accepts a column name or a non-empty sequence of names;
-    callers must include all boundaries in custom groups. coordinates must already
-    be in metres and time in seconds. when team is available, transitions between
-    teams are unknown because event coordinates use team-relative orientation.
-
-    this is displacement between recorded event starts, not tracking-derived
-    instantaneous ball velocity. first rows, missing inputs, and non-positive
-    time differences yield nan. short intervals can amplify location noise, so
-    intervals below min_elapsed are also treated as unknown (nan) rather than
-    computed, and any remaining finite value is capped at max_speed to guard
-    against residual noise amplification. the original row order and index
-    are preserved.
-    """
 
     def __init__(self, time_col=None, x_col=None, y_col=None, group_col=None,
                  min_elapsed=0.1, max_speed=60.0):

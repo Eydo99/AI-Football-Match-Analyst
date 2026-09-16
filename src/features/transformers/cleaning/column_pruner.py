@@ -89,15 +89,12 @@ DROP_COLS_POST_FEATURE_ENG = [
     'play_pattern',
     'under_pressure',
     'position',
-    'player',
     'player_id',
     'id',
     'related_events',
     'possession',
     'possession_team',
     'possession_team_id',
-    'minute',
-    'second',
 
     # foul_* attribute columns
     'foul_committed_advantage',
@@ -145,6 +142,8 @@ DROP_COLS_POST_FEATURE_ENG = [
     'shot_technique',
     'shot_type',
     'shot_statsbomb_xg'
+    ,'x_end',
+    'y_end',
 ]
 
 class ColumnPruner(Transformer):

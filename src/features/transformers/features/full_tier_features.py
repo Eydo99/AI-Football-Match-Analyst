@@ -34,7 +34,7 @@ class TeamCentroidDistance(Transformer):
 
 class OpenAngleGoal(Transformer):
 
-    Requires = ['opponent_locations', 'ball_x_start', 'ball_y_start' , 'type']
+    Requires = ['opponent_locations', 'ball_x_start', 'ball_y_start']
 
     def __init__(self , player_width = None):
         if player_width is None:
@@ -42,7 +42,7 @@ class OpenAngleGoal(Transformer):
         self.player_width = player_width
 
     def compute_open_angle_goal(self, row):
-        if(row['type'] == 'Shot' and row['opponent_locations'] and isinstance(row['opponent_locations'], list) and len(row['opponent_locations']) > 0 
+        if(row['opponent_locations'] and isinstance(row['opponent_locations'], list) and len(row['opponent_locations']) > 0
            and pd.notna(row['ball_x_start']) and pd.notna(row['ball_y_start'])):
             
             angle_left_post = np.arctan2(30.34 - row['ball_y_start'], 105 - row['ball_x_start'])
