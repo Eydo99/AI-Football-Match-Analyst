@@ -1,10 +1,10 @@
 from src.models import LogisticRegressionModel, RandomForestModel, XGBoostModel
-from src.models.evaluation import (
-    evaluate_model, compare_models, plot_calibration_reference,
-)
+from src.models.evaluation.xg_evaluator import XGEvaluator
 
 drop_cols = ['match_id', 'team', 'type' , 'ball_x_start', 'ball_y_start']
 target_col = 'ends_in_goal'
+
+evaluator = XGEvaluator()
 
 lr = LogisticRegressionModel()
 lr.train(drop_cols=drop_cols, target_col=target_col)
@@ -15,14 +15,22 @@ rf.train(drop_cols=drop_cols, target_col=target_col)
 xgb = XGBoostModel()
 xgb.train(drop_cols=drop_cols, target_col=target_col)
 
+results_lr = evaluator.compute_metrics(lr, 'Logistic Regression')
+results_rf = evaluator.compute_metrics(rf, 'Random Forest')
+results_xgb = evaluator.compute_metrics(xgb, 'XGBoost')
+
 results = [
-    evaluate_model(lr, 'Logistic Regression'),
-    evaluate_model(rf, 'Random Forest'),
-    evaluate_model(xgb, 'XGBoost'),
+    results_lr,
+    results_rf,
+    results_xgb
 ]
 
-plot_calibration_reference()
-print(compare_models(results))
+evaluator.plot(lr, 'Logistic Regression',results_lr)
+evaluator.plot(rf, 'Random Forest',results_rf)
+evaluator.plot(xgb, 'XGBoost',results_xgb)
+
+evaluator.plot_calibration_reference()
+
 
 for result in results:
     print(f"\n{result['model']} best params: {result['best_params']}")

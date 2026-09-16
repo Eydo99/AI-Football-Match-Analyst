@@ -21,10 +21,10 @@ class XGBoostXGModel(XGBaseModel):
 
     def get_param_grid(self):
         return {
-            "clf__n_estimators": [200, 300, 500],
-            "clf__max_depth": [3, 4, 5],
-            "clf__learning_rate": [0.01, 0.05, 0.1],
+            "clf__n_estimators": [200, 300,400,500],
+            "clf__max_depth": [3, 4, 5 ,6],
+            "clf__learning_rate": [0.01, 0.05, 0.08 , 0.1],
             "clf__subsample": [0.7, 0.8, 1.0],
-            "clf__colsample_bytree": [0.7, 0.8, 1.0],
-            "clf__min_child_weight": [1, 5, 10],
+            "clf__colsample_bytree": [0.7, 0.8,1.0],
+            "clf__min_child_weight": [1, 5,8,10],
         }
