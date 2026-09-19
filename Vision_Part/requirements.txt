@@ -1,0 +1,11 @@
+numpy
+pandas
+opencv-python
+PySide6
+torch
+torchvision
+ultralytics
+inference
+transformers
+scikit-learn
+supervision
