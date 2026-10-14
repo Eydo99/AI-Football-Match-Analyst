@@ -1,0 +1,31 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Output and temp files
+*.mp4
+*.csv
+*.json
+!config.example.json
+
+# Model weights
+*.pt
+*.pth
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Datasets / Images
+assets/
+dataset/
+images/
+labels/
+*.jpg
+*.png

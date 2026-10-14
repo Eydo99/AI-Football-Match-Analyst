@@ -1,0 +1,10 @@
+{
+  "video_path": "assets/input_video.mp4",
+  "output_video": "output/output_tracking.mp4",
+  "output_csv": "output/tracking_data.csv",
+  "process_full_video": false,
+  "frame_limit": 50,
+  "roboflow_api_key": "YOUR_API_KEY_HERE",
+  "roboflow_model_id": "object-detection-traffic/1",
+  "team_classification_method": "clip"
+}
